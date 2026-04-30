@@ -60,8 +60,11 @@ export class Notice {
 	constructor(_msg: string) {}
 }
 
-export class TFile {
+export class TAbstractFile {
 	path: string = '';
+}
+
+export class TFile extends TAbstractFile {
 	extension: string = 'md';
 	parent: TFolder | null = null;
 }

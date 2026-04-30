@@ -1,1 +1,513 @@
-/* SmartMemory Obsidian Plugin Styles */
+/* SmartMemory Obsidian Plugin
+ * Uses Obsidian CSS variables (var(--text-normal), var(--background-primary), etc.)
+ * for automatic light/dark theme compatibility.
+ */
+
+/* === Settings tab === */
+.smartmemory-warning {
+	padding: 0.6em 0.8em;
+	margin-bottom: 1em;
+	background-color: var(--background-modifier-error-rgb, rgba(225, 75, 75, 0.1));
+	border-left: 3px solid var(--text-error, #e25c5c);
+	border-radius: 4px;
+	color: var(--text-muted);
+	font-size: 0.9em;
+}
+
+/* === Status bar === */
+.smartmemory-status-bar {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4em;
+	cursor: pointer;
+	padding: 0 0.4em;
+}
+
+.smartmemory-status-bar:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.smartmemory-status-dot {
+	font-size: 0.75em;
+}
+
+.smartmemory-status-text {
+	color: var(--text-muted);
+	font-size: 0.85em;
+}
+
+.smartmemory-status-sync {
+	color: var(--text-faint);
+	font-size: 0.85em;
+}
+
+.smartmemory-status-menu {
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	box-shadow: var(--shadow-s);
+	padding: 0.3em 0;
+	z-index: 1000;
+	min-width: 200px;
+}
+
+.smartmemory-status-menu-item {
+	padding: 0.4em 0.8em;
+	cursor: pointer;
+	color: var(--text-normal);
+}
+
+.smartmemory-status-menu-item:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+/* === Search view === */
+.smartmemory-search-view {
+	padding: 0.8em;
+	display: flex;
+	flex-direction: column;
+	gap: 0.6em;
+	height: 100%;
+}
+
+.smartmemory-search-header h3 {
+	margin: 0 0 0.5em 0;
+}
+
+.smartmemory-search-input-wrap {
+	display: flex;
+	width: 100%;
+}
+
+.smartmemory-search-input {
+	width: 100%;
+	padding: 0.5em 0.7em;
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	border-radius: 4px;
+	font-size: 0.9em;
+}
+
+.smartmemory-search-filters {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4em;
+}
+
+.smartmemory-search-filter {
+	flex: 1 1 0;
+	min-width: 100px;
+	padding: 0.3em 0.5em;
+	font-size: 0.8em;
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	border-radius: 4px;
+}
+
+.smartmemory-search-results {
+	flex: 1 1 auto;
+	overflow-y: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 0.4em;
+}
+
+.smartmemory-search-empty,
+.smartmemory-search-error {
+	color: var(--text-muted);
+	font-size: 0.9em;
+	padding: 1em 0;
+	text-align: center;
+}
+
+.smartmemory-search-error {
+	color: var(--text-error);
+}
+
+.smartmemory-search-result {
+	padding: 0.6em 0.8em;
+	border: 1px solid var(--background-modifier-border);
+	background-color: var(--background-primary);
+	border-radius: 6px;
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+
+.smartmemory-search-result:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.smartmemory-search-result-header {
+	display: flex;
+	gap: 0.5em;
+	align-items: center;
+	margin-bottom: 0.3em;
+	font-size: 0.75em;
+}
+
+.smartmemory-search-type {
+	display: inline-block;
+	padding: 0.1em 0.5em;
+	border-radius: 999px;
+	background-color: var(--background-modifier-border);
+	color: var(--text-muted);
+	font-weight: 500;
+}
+
+.smartmemory-search-score {
+	color: var(--text-faint);
+	font-family: var(--font-monospace);
+}
+
+.smartmemory-search-snippet {
+	color: var(--text-normal);
+	font-size: 0.85em;
+	line-height: 1.4;
+}
+
+/* === Recall modal === */
+.smartmemory-recall-modal,
+.smartmemory-lineage-modal,
+.smartmemory-autolink-modal,
+.smartmemory-onboarding-modal,
+.smartmemory-upgrade-modal {
+	min-width: 500px;
+	max-width: 700px;
+}
+
+.smartmemory-recall-query {
+	color: var(--text-muted);
+	font-size: 0.85em;
+	font-style: italic;
+	margin-bottom: 1em;
+}
+
+.smartmemory-recall-results {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+	max-height: 400px;
+	overflow-y: auto;
+}
+
+.smartmemory-recall-result {
+	display: flex;
+	gap: 0.8em;
+	padding: 0.6em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+}
+
+.smartmemory-recall-result-main {
+	flex: 1;
+}
+
+.smartmemory-recall-result-meta {
+	display: flex;
+	gap: 0.5em;
+	margin-bottom: 0.3em;
+	font-size: 0.75em;
+}
+
+.smartmemory-recall-result-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3em;
+}
+
+/* === Entity view === */
+.smartmemory-entity-view {
+	padding: 0.8em;
+	overflow-y: auto;
+	height: 100%;
+}
+
+.smartmemory-entity-empty {
+	color: var(--text-muted);
+	font-size: 0.9em;
+	padding: 1em 0;
+}
+
+.smartmemory-entity-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4em;
+}
+
+.smartmemory-entity-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4em;
+	padding: 0.25em 0.6em;
+	border-radius: 999px;
+	background-color: var(--background-modifier-border);
+	cursor: pointer;
+	font-size: 0.85em;
+	transition: background-color 0.15s ease;
+}
+
+.smartmemory-entity-chip:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.smartmemory-entity-name {
+	color: var(--text-normal);
+	font-weight: 500;
+}
+
+.smartmemory-entity-type {
+	color: var(--text-faint);
+	font-size: 0.75em;
+}
+
+.smartmemory-entity-cross-results {
+	margin-top: 1em;
+	padding-top: 0.8em;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.smartmemory-entity-cross-results h4 {
+	margin: 0 0 0.5em 0;
+	font-size: 0.9em;
+	color: var(--text-muted);
+}
+
+.smartmemory-entity-cross-result {
+	padding: 0.3em 0;
+}
+
+.smartmemory-entity-cross-result a {
+	cursor: pointer;
+}
+
+/* === Auto-link modal === */
+.smartmemory-autolink-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3em;
+	max-height: 400px;
+	overflow-y: auto;
+	margin: 0.8em 0;
+}
+
+.smartmemory-autolink-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+	padding: 0.4em 0.6em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+}
+
+.smartmemory-autolink-preview {
+	flex: 1;
+	font-size: 0.85em;
+	font-family: var(--font-monospace);
+}
+
+.smartmemory-autolink-context {
+	color: var(--text-faint);
+}
+
+.smartmemory-autolink-match {
+	color: var(--text-error);
+	font-weight: 600;
+}
+
+.smartmemory-autolink-target {
+	color: var(--text-accent);
+	font-weight: 600;
+}
+
+.smartmemory-autolink-arrow {
+	color: var(--text-muted);
+	margin: 0 0.3em;
+}
+
+.smartmemory-autolink-actions {
+	display: flex;
+	gap: 0.5em;
+	justify-content: flex-end;
+}
+
+/* === Contradiction banner === */
+.smartmemory-contradiction-banner {
+	display: flex;
+	align-items: center;
+	gap: 0.6em;
+	padding: 0.5em 0.8em;
+	background-color: var(--background-modifier-border);
+	border-left: 3px solid var(--text-warning, #d4a017);
+	font-size: 0.9em;
+}
+
+.smartmemory-contradiction-banner[data-kind="superseded"] {
+	border-left-color: var(--text-error, #e25c5c);
+}
+
+.smartmemory-banner-text {
+	flex: 1;
+	color: var(--text-normal);
+}
+
+.smartmemory-banner-link {
+	color: var(--text-accent);
+	cursor: pointer;
+}
+
+.smartmemory-banner-action {
+	font-size: 0.8em;
+}
+
+.smartmemory-banner-dismiss {
+	background: transparent;
+	border: none;
+	color: var(--text-faint);
+	cursor: pointer;
+	font-size: 1.2em;
+	padding: 0 0.3em;
+}
+
+/* === Lineage modal === */
+.smartmemory-lineage-info {
+	color: var(--text-muted);
+	font-size: 0.85em;
+}
+
+.smartmemory-lineage-list {
+	padding-left: 1.2em;
+}
+
+.smartmemory-lineage-list li {
+	padding: 0.5em 0;
+}
+
+.smartmemory-lineage-meta {
+	display: flex;
+	gap: 0.5em;
+	margin-bottom: 0.3em;
+	font-size: 0.75em;
+}
+
+.smartmemory-lineage-confidence {
+	color: var(--text-faint);
+	font-family: var(--font-monospace);
+}
+
+/* === Inline suggestions widget === */
+.smartmemory-suggestion-widget {
+	position: absolute;
+	bottom: 30px;
+	left: 50%;
+	transform: translateX(-50%);
+	padding: 0.4em 0.8em;
+	background-color: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	box-shadow: var(--shadow-s);
+	font-size: 0.85em;
+	max-width: 80%;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	z-index: 100;
+}
+
+.smartmemory-suggestion-label {
+	color: var(--text-muted);
+	margin-right: 0.3em;
+}
+
+.smartmemory-suggestion-link {
+	color: var(--text-accent);
+	cursor: pointer;
+}
+
+.smartmemory-suggestion-dismiss {
+	background: transparent;
+	border: none;
+	color: var(--text-faint);
+	cursor: pointer;
+	margin-left: 0.4em;
+	font-size: 1em;
+}
+
+/* === Graph view === */
+.smartmemory-graph-view {
+	padding: 0;
+	height: 100%;
+	display: flex;
+	flex-direction: column;
+}
+
+.smartmemory-graph-toolbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0.5em 0.8em;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.smartmemory-graph-title {
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.smartmemory-graph-canvas {
+	flex: 1;
+	background-color: var(--background-primary);
+}
+
+.smartmemory-graph-message {
+	padding: 1em;
+	color: var(--text-muted);
+	text-align: center;
+}
+
+/* === Onboarding === */
+.smartmemory-onboarding-paths {
+	display: flex;
+	gap: 1em;
+	margin: 1em 0;
+}
+
+.smartmemory-onboarding-path {
+	flex: 1;
+	padding: 1em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+}
+
+.smartmemory-onboarding-path h3 {
+	margin: 0;
+}
+
+.smartmemory-onboarding-path p {
+	color: var(--text-muted);
+	font-size: 0.9em;
+	flex: 1;
+}
+
+.smartmemory-onboarding-skip {
+	text-align: center;
+	margin-top: 0.5em;
+}
+
+.smartmemory-onboarding-skip a {
+	color: var(--text-muted);
+	font-size: 0.85em;
+	cursor: pointer;
+}
+
+/* === Upgrade modal === */
+.smartmemory-upgrade-actions {
+	display: flex;
+	gap: 0.5em;
+	justify-content: flex-end;
+	margin-top: 1em;
+}

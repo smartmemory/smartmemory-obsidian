@@ -30,6 +30,10 @@ export interface SmartMemorySettings {
 	// Graph
 	graphDefaultHops: number;
 	graphMaxNodes: number;
+
+	// Onboarding
+	hasCompletedOnboarding: boolean;
+	hasSeenIngestTour: boolean;
 }
 
 export const DEFAULT_SETTINGS: SmartMemorySettings = {
@@ -58,6 +62,9 @@ export const DEFAULT_SETTINGS: SmartMemorySettings = {
 
 	graphDefaultHops: 2,
 	graphMaxNodes: 100,
+
+	hasCompletedOnboarding: false,
+	hasSeenIngestTour: false,
 };
 
 export type ConnectionStatus = 'connected' | 'disconnected' | 'syncing';

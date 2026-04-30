@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile } from 'obsidian';
 import type SmartMemoryPlugin from '../main';
 import type { SearchResult } from '../services/search';
+import { handleQuotaError } from '../util/quota-errors';
 
 export const SEARCH_VIEW_TYPE = 'smartmemory-search';
 
@@ -103,12 +104,11 @@ export class SearchView extends ItemView {
 			this.renderResults(results);
 		} catch (err) {
 			if (seq !== this.requestSeq) return;
-			const message = err instanceof Error ? err.message : String(err);
-			if (message.includes('429')) {
+			if (handleQuotaError(this.plugin.app, err)) {
 				this.renderError('Daily search limit reached. Upgrade to continue.');
-			} else {
-				this.renderError(`Search failed: ${message}`);
+				return;
 			}
+			this.renderError(`Search failed: ${err instanceof Error ? err.message : String(err)}`);
 		}
 	}
 

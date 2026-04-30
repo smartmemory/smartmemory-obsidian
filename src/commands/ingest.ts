@@ -1,5 +1,6 @@
 import { Notice, TFile, TFolder } from 'obsidian';
 import type SmartMemoryPlugin from '../main';
+import { handleQuotaError } from '../util/quota-errors';
 
 export function registerIngestCommands(plugin: SmartMemoryPlugin): void {
 	plugin.addCommand({
@@ -19,11 +20,8 @@ export function registerIngestCommands(plugin: SmartMemoryPlugin): void {
 				await plugin.ingestService.ingestFile(file);
 				new Notice('SmartMemory: ingested');
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
-				if (message.includes('quota_exceeded')) {
-					new Notice('SmartMemory: free tier limit reached. Upgrade to continue.');
-				} else {
-					new Notice(`SmartMemory: ingest failed — ${message}`);
+				if (!handleQuotaError(plugin.app, err)) {
+					new Notice(`SmartMemory: ingest failed — ${err instanceof Error ? err.message : err}`);
 				}
 			}
 		},

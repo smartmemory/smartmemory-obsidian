@@ -1,16 +1,29 @@
 import type { ConnectionStatus } from './types';
 
+export interface StatusBarActions {
+	onIngest?: () => void;
+	onSearch?: () => void;
+	onSettings?: () => void;
+	onUpgrade?: () => void;
+}
+
 export class StatusBarController {
 	private el: HTMLElement;
 	private status: ConnectionStatus = 'disconnected';
 	private memoryCount: number = 0;
 	private memoryLimit: number | null = null;
 	private lastSync: Date | null = null;
+	private actions: StatusBarActions = {};
 
 	constructor(el: HTMLElement) {
 		this.el = el;
 		this.el.addClass('smartmemory-status-bar');
+		this.el.addEventListener('click', () => this.openMenu());
 		this.render();
+	}
+
+	setActions(actions: StatusBarActions): void {
+		this.actions = actions;
 	}
 
 	setStatus(status: ConnectionStatus): void {
@@ -27,6 +40,48 @@ export class StatusBarController {
 	setLastSync(date: Date): void {
 		this.lastSync = date;
 		this.render();
+	}
+
+	private openMenu(): void {
+		// Simple toggle menu rendered as a popup attached to the status bar.
+		// We avoid Obsidian's Menu API here to keep the footprint small;
+		// host plugin can wire actions in via setActions().
+		const existing = document.querySelector('.smartmemory-status-menu');
+		if (existing) {
+			existing.remove();
+			return;
+		}
+
+		const menu = document.body.createDiv({ cls: 'smartmemory-status-menu' });
+		const rect = this.el.getBoundingClientRect();
+		menu.style.position = 'fixed';
+		menu.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+		menu.style.right = `${window.innerWidth - rect.right}px`;
+
+		const addItem = (label: string, fn?: () => void) => {
+			if (!fn) return;
+			const item = menu.createDiv({ cls: 'smartmemory-status-menu-item', text: label });
+			item.addEventListener('click', () => {
+				menu.remove();
+				fn();
+			});
+		};
+
+		addItem('Ingest current note', this.actions.onIngest);
+		addItem('Search', this.actions.onSearch);
+		addItem('Settings', this.actions.onSettings);
+		if (this.memoryLimit !== null && this.memoryCount >= this.memoryLimit * 0.8) {
+			addItem('Upgrade to remove free tier limit', this.actions.onUpgrade);
+		}
+
+		// Click outside to dismiss
+		const dismiss = (evt: MouseEvent) => {
+			if (!menu.contains(evt.target as Node) && evt.target !== this.el) {
+				menu.remove();
+				document.removeEventListener('click', dismiss, true);
+			}
+		};
+		setTimeout(() => document.addEventListener('click', dismiss, true), 0);
 	}
 
 	private render(): void {

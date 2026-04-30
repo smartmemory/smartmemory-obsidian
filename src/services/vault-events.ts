@@ -1,0 +1,91 @@
+import { TAbstractFile, TFile } from 'obsidian';
+import type SmartMemoryPlugin from '../main';
+import { KeyedDebouncer } from '../util/debouncer';
+
+/**
+ * Wires Obsidian vault lifecycle events to plugin state:
+ *
+ *  - rename: update mapping store; preserves SmartMemory mapping under new path
+ *  - delete: drop mapping (does NOT delete remote memory — local removal only)
+ *  - modify: if auto-ingest-on-save, schedule debounced re-ingest
+ *  - create: if auto-ingest-on-create, schedule a fresh ingest
+ *
+ * Auto-ingest paths skip files when an in-progress folder batch is running
+ * (ingestService.batchInProgress) to avoid feedback loops with the
+ * frontmatter writeback that follows every ingest.
+ */
+export class VaultEvents {
+	private plugin: SmartMemoryPlugin;
+	private modifyDebouncer: KeyedDebouncer<string>;
+	private createDebouncer: KeyedDebouncer<string>;
+
+	constructor(plugin: SmartMemoryPlugin) {
+		this.plugin = plugin;
+		const delay = Math.max(500, plugin.settings.ingestDebounceMs);
+		this.modifyDebouncer = new KeyedDebouncer<string>(delay);
+		this.createDebouncer = new KeyedDebouncer<string>(delay);
+	}
+
+	register(): void {
+		const { app } = this.plugin;
+
+		this.plugin.registerEvent(
+			app.vault.on('rename', (file: TAbstractFile, oldPath: string) => {
+				if (!(file instanceof TFile)) return;
+				this.plugin.mappingStore.handleRename(oldPath, file.path);
+				this.modifyDebouncer.cancel(oldPath);
+				void this.plugin.saveMappings();
+			})
+		);
+
+		this.plugin.registerEvent(
+			app.vault.on('delete', (file: TAbstractFile) => {
+				if (!(file instanceof TFile)) return;
+				this.plugin.mappingStore.handleDelete(file.path);
+				this.modifyDebouncer.cancel(file.path);
+				void this.plugin.saveMappings();
+			})
+		);
+
+		this.plugin.registerEvent(
+			app.vault.on('modify', (file: TAbstractFile) => {
+				if (!(file instanceof TFile) || file.extension !== 'md') return;
+				if (!this.plugin.settings.autoIngestOnSave) return;
+				if (this.plugin.ingestService?.batchInProgress) return;
+
+				this.modifyDebouncer.schedule(file.path, () => {
+					void this.runAutoIngest(file);
+				});
+			})
+		);
+
+		this.plugin.registerEvent(
+			app.vault.on('create', (file: TAbstractFile) => {
+				if (!(file instanceof TFile) || file.extension !== 'md') return;
+				if (!this.plugin.settings.autoIngestOnCreate) return;
+				if (this.plugin.ingestService?.batchInProgress) return;
+
+				this.createDebouncer.schedule(file.path, () => {
+					void this.runAutoIngest(file);
+				});
+			})
+		);
+
+		// Cleanup on plugin unload
+		this.plugin.register(() => {
+			this.modifyDebouncer.cancelAll();
+			this.createDebouncer.cancelAll();
+		});
+	}
+
+	private async runAutoIngest(file: TFile): Promise<void> {
+		const service = this.plugin.ingestService;
+		if (!service) return;
+		if (service.batchInProgress) return;
+		try {
+			await service.ingestFile(file);
+		} catch {
+			// Surfaced via ingest events; auto-ingest stays silent on per-file failures
+		}
+	}
+}

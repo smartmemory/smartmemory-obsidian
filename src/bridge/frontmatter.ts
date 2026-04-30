@@ -22,24 +22,31 @@ export async function writeSmartMemoryFrontmatter(
 	file: TFile,
 	data: EnrichmentData,
 	settings: SmartMemorySettings,
-): Promise<void> {
-	await app.fileManager.processFrontMatter(file, (fm) => {
-		if (settings.writeFrontmatterId) {
-			fm.smartmemory_id = data.id;
-		}
-		if (settings.enrichMemoryType && data.memoryType) {
-			fm.smartmemory_type = data.memoryType;
-		}
-		if (settings.enrichEntities && data.entities) {
-			fm.smartmemory_entities = data.entities.map(formatEntity);
-		}
-		if (settings.enrichRelations && data.relations) {
-			fm.smartmemory_relations = data.relations.map(formatRelation);
-		}
-		if (settings.enrichSyncTimestamp) {
-			fm.smartmemory_last_sync = new Date().toISOString();
-		}
-	});
+): Promise<{ ok: true } | { ok: false; error: Error }> {
+	try {
+		await app.fileManager.processFrontMatter(file, (fm) => {
+			if (settings.writeFrontmatterId) {
+				fm.smartmemory_id = data.id;
+			}
+			if (settings.enrichMemoryType && data.memoryType) {
+				fm.smartmemory_type = data.memoryType;
+			}
+			if (settings.enrichEntities && data.entities) {
+				fm.smartmemory_entities = data.entities.map(formatEntity);
+			}
+			if (settings.enrichRelations && data.relations) {
+				fm.smartmemory_relations = data.relations.map(formatRelation);
+			}
+			if (settings.enrichSyncTimestamp) {
+				fm.smartmemory_last_sync = new Date().toISOString();
+			}
+		});
+		return { ok: true };
+	} catch (err) {
+		// Malformed YAML or unparseable frontmatter — surface to caller for
+		// graceful handling (e.g., notice the user, log, skip enrichment)
+		return { ok: false, error: err instanceof Error ? err : new Error(String(err)) };
+	}
 }
 
 export function readSmartMemoryId(app: App, file: TFile): string | null {
@@ -48,14 +55,22 @@ export function readSmartMemoryId(app: App, file: TFile): string | null {
 	return typeof id === 'string' ? id : null;
 }
 
-export async function clearSmartMemoryFrontmatter(app: App, file: TFile): Promise<void> {
-	await app.fileManager.processFrontMatter(file, (fm) => {
-		for (const key of Object.keys(fm)) {
-			if (key.startsWith('smartmemory_')) {
-				delete fm[key];
+export async function clearSmartMemoryFrontmatter(
+	app: App,
+	file: TFile,
+): Promise<{ ok: true } | { ok: false; error: Error }> {
+	try {
+		await app.fileManager.processFrontMatter(file, (fm) => {
+			for (const key of Object.keys(fm)) {
+				if (key.startsWith('smartmemory_')) {
+					delete fm[key];
+				}
 			}
-		}
-	});
+		});
+		return { ok: true };
+	} catch (err) {
+		return { ok: false, error: err instanceof Error ? err : new Error(String(err)) };
+	}
 }
 
 function formatEntity(entity: { name: string; type?: string }): string {

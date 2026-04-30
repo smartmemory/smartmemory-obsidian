@@ -9,6 +9,8 @@ export default class SmartMemoryPlugin extends Plugin {
 	settings: SmartMemorySettings = DEFAULT_SETTINGS;
 	client: SmartMemoryClient | null = null;
 	statusBar: StatusBarController | null = null;
+	/** Increments each time the client is reinitialized; used to discard stale async results. */
+	private clientGeneration = 0;
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -32,6 +34,7 @@ export default class SmartMemoryPlugin extends Plugin {
 	}
 
 	private initClient(): void {
+		this.clientGeneration += 1;
 		const apiKey = this.resolveApiKey();
 		if (!apiKey || !this.settings.apiUrl) {
 			this.client = null;
@@ -61,18 +64,23 @@ export default class SmartMemoryPlugin extends Plugin {
 	}
 
 	async testConnection(): Promise<boolean> {
-		if (!this.client) {
+		const generation = this.clientGeneration;
+		const client = this.client;
+		if (!client) {
 			this.statusBar?.setStatus('disconnected');
 			return false;
 		}
 		try {
 			this.statusBar?.setStatus('syncing');
-			const result = await this.client.memories.list({ limit: 1 });
+			const result = await client.memories.list({ limit: 1 });
+			// Discard if a settings change reinitialized the client during the await
+			if (generation !== this.clientGeneration) return false;
 			this.statusBar?.setStatus('connected');
 			this.statusBar?.setCount(result.total || 0);
 			this.statusBar?.setLastSync(new Date());
 			return true;
 		} catch (err) {
+			if (generation !== this.clientGeneration) return false;
 			this.statusBar?.setStatus('disconnected');
 			return false;
 		}

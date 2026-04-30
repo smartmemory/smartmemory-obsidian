@@ -13,6 +13,15 @@ import { requestUrl, RequestUrlResponse } from 'obsidian';
 export function createObsidianFetch(): typeof fetch {
 	return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
 		const url = typeof input === 'string' ? input : input.toString();
+
+		// AbortSignal pre-flight check. Obsidian's requestUrl does not support
+		// cancellation, so we can't interrupt an in-flight request, but we can
+		// honor a signal that's already aborted by refusing to start.
+		const signal = init?.signal;
+		if (signal?.aborted) {
+			throw abortError(signal);
+		}
+
 		try {
 			const result = await requestUrl({
 				url,
@@ -20,8 +29,14 @@ export function createObsidianFetch(): typeof fetch {
 				headers: init?.headers as Record<string, string>,
 				body: typeof init?.body === 'string' ? init.body : undefined,
 			});
+			// If signal aborted while in-flight, surface the abort to the caller
+			// rather than returning the (now-undesired) response.
+			if (signal?.aborted) {
+				throw abortError(signal);
+			}
 			return toFetchResponse(result);
 		} catch (err: any) {
+			if (err?.name === 'AbortError') throw err;
 			// requestUrl throws on non-2xx — convert to synthetic Response so
 			// BaseAPI._handleError can parse status + body normally
 			if (err && typeof err.status === 'number') {
@@ -31,6 +46,13 @@ export function createObsidianFetch(): typeof fetch {
 			throw new TypeError(`Network request failed: ${err?.message || err}`);
 		}
 	};
+}
+
+function abortError(signal: AbortSignal): Error {
+	const reason = signal.reason instanceof Error
+		? signal.reason
+		: new DOMException('The operation was aborted.', 'AbortError');
+	return reason;
 }
 
 function toFetchResponse(result: RequestUrlResponse): Response {

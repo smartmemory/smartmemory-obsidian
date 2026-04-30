@@ -123,6 +123,38 @@ describe('createObsidianFetch', () => {
 		});
 	});
 
+	describe('abort signal', () => {
+		it('refuses to start when signal is already aborted', async () => {
+			const controller = new AbortController();
+			controller.abort();
+
+			const fetchFn = createObsidianFetch();
+			await expect(
+				fetchFn('https://api.test/memory/list', { signal: controller.signal })
+			).rejects.toThrow();
+			expect(requestUrl).not.toHaveBeenCalled();
+		});
+
+		it('discards response when aborted during in-flight request', async () => {
+			const controller = new AbortController();
+			vi.mocked(requestUrl).mockImplementation(async () => {
+				controller.abort();
+				return {
+					status: 200,
+					headers: {},
+					text: '{}',
+					json: {},
+					arrayBuffer: new ArrayBuffer(0),
+				} as any;
+			});
+
+			const fetchFn = createObsidianFetch();
+			await expect(
+				fetchFn('https://api.test/memory/list', { signal: controller.signal })
+			).rejects.toThrow();
+		});
+	});
+
 	describe('text() method', () => {
 		it('returns response body as text', async () => {
 			vi.mocked(requestUrl).mockResolvedValue({

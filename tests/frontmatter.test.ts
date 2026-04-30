@@ -28,11 +28,27 @@ describe('frontmatter helpers', () => {
 
 	describe('writeSmartMemoryFrontmatter', () => {
 		it('writes smartmemory_id when writeFrontmatterId is true', async () => {
-			await writeSmartMemoryFrontmatter(mockApp, mockFile, {
+			const result = await writeSmartMemoryFrontmatter(mockApp, mockFile, {
 				id: 'item-abc',
 			}, DEFAULT_SETTINGS);
 
+			expect(result.ok).toBe(true);
 			expect(frontmatter.smartmemory_id).toBe('item-abc');
+		});
+
+		it('returns error result on malformed YAML without throwing', async () => {
+			mockApp.fileManager.processFrontMatter = vi.fn(async () => {
+				throw new Error('YAML parse error');
+			});
+
+			const result = await writeSmartMemoryFrontmatter(mockApp, mockFile, {
+				id: 'item-1',
+			}, DEFAULT_SETTINGS);
+
+			expect(result.ok).toBe(false);
+			if (!result.ok) {
+				expect(result.error.message).toContain('YAML parse error');
+			}
 		});
 
 		it('skips smartmemory_id when writeFrontmatterId is false', async () => {

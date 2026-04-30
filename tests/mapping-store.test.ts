@@ -24,6 +24,15 @@ describe('MappingStore', () => {
 			// Old reverse mapping cleared
 			expect(store.getFilePath('item-1')).toBeNull();
 		});
+
+		it('reassigning same itemId to a different file clears stale forward mapping', () => {
+			// Bug case: same itemId mapped to two files leaves stale forward entry
+			store.set('a.md', 'item-1');
+			store.set('b.md', 'item-1');
+			expect(store.getMemoryId('a.md')).toBeNull(); // stale forward cleared
+			expect(store.getMemoryId('b.md')).toBe('item-1');
+			expect(store.getFilePath('item-1')).toBe('b.md');
+		});
 	});
 
 	describe('handleRename', () => {
@@ -38,6 +47,18 @@ describe('MappingStore', () => {
 		it('is a no-op when old path has no mapping', () => {
 			store.handleRename('nonexistent.md', 'new.md');
 			expect(store.getMemoryId('new.md')).toBeNull();
+		});
+
+		it('rename onto an existing path clears the displaced reverse mapping', () => {
+			// Bug case: rename onto a path that already has a different itemId
+			store.set('a.md', 'item-A');
+			store.set('b.md', 'item-B');
+			store.handleRename('a.md', 'b.md');
+			expect(store.getMemoryId('a.md')).toBeNull();
+			expect(store.getMemoryId('b.md')).toBe('item-A');
+			expect(store.getFilePath('item-A')).toBe('b.md');
+			// item-B is no longer mapped to any file
+			expect(store.getFilePath('item-B')).toBeNull();
 		});
 	});
 

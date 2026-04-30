@@ -22,9 +22,16 @@ export class MappingStore {
 	}
 
 	set(filePath: string, itemId: string): void {
+		// Clear stale reverse mapping if this file was previously mapped to a different itemId
 		const oldItemId = this.fileToMemory[filePath];
 		if (oldItemId && oldItemId !== itemId) {
 			delete this.memoryToFile[oldItemId];
+		}
+		// Clear stale forward mapping if this itemId was previously mapped to a different file
+		const oldFilePath = this.memoryToFile[itemId];
+		if (oldFilePath && oldFilePath !== filePath) {
+			delete this.fileToMemory[oldFilePath];
+			delete this.contentHashes[oldFilePath];
 		}
 		this.fileToMemory[filePath] = itemId;
 		this.memoryToFile[itemId] = filePath;
@@ -41,6 +48,13 @@ export class MappingStore {
 	handleRename(oldPath: string, newPath: string): void {
 		const itemId = this.fileToMemory[oldPath];
 		if (!itemId) return;
+
+		// Clear any stale mapping for newPath before overwriting
+		const displacedItemId = this.fileToMemory[newPath];
+		if (displacedItemId && displacedItemId !== itemId) {
+			delete this.memoryToFile[displacedItemId];
+		}
+
 		delete this.fileToMemory[oldPath];
 		this.fileToMemory[newPath] = itemId;
 		this.memoryToFile[itemId] = newPath;

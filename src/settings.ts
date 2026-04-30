@@ -1,12 +1,52 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import type SmartMemoryPlugin from './main';
 
+const TEXT_DEBOUNCE_MS = 500;
+
 export class SmartMemorySettingTab extends PluginSettingTab {
 	plugin: SmartMemoryPlugin;
+	private saveTimer: ReturnType<typeof setTimeout> | null = null;
+	/** Tracks an in-flight saveSettings() launched by the debounce timer
+	 *  so flushPendingSave() can wait for it to complete before testing. */
+	private inFlightSave: Promise<void> | null = null;
 
 	constructor(app: App, plugin: SmartMemoryPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
+	}
+
+	hide(): void {
+		// Flush any pending text debounce when leaving the settings tab
+		if (this.saveTimer !== null) {
+			clearTimeout(this.saveTimer);
+			this.saveTimer = null;
+			void this.plugin.saveSettings();
+		}
+	}
+
+	private debouncedSave(): void {
+		if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+		this.saveTimer = setTimeout(() => {
+			this.saveTimer = null;
+			this.inFlightSave = this.plugin.saveSettings().finally(() => {
+				this.inFlightSave = null;
+			});
+		}, TEXT_DEBOUNCE_MS);
+	}
+
+	private async flushPendingSave(): Promise<void> {
+		// Case 1: a debounce timer is queued — fire it now and await
+		if (this.saveTimer !== null) {
+			clearTimeout(this.saveTimer);
+			this.saveTimer = null;
+			this.inFlightSave = this.plugin.saveSettings().finally(() => {
+				this.inFlightSave = null;
+			});
+		}
+		// Case 2: a debounce-triggered save is already in-flight — await it
+		if (this.inFlightSave) {
+			await this.inFlightSave;
+		}
 	}
 
 	display(): void {
@@ -30,30 +70,34 @@ export class SmartMemorySettingTab extends PluginSettingTab {
 			.addText(text => text
 				.setPlaceholder('https://api.smartmemory.ai')
 				.setValue(this.plugin.settings.apiUrl)
-				.onChange(async (value) => {
+				.onChange((value) => {
 					this.plugin.settings.apiUrl = value || 'https://api.smartmemory.ai';
-					await this.plugin.saveSettings();
+					this.debouncedSave();
 				}));
 
 		new Setting(containerEl)
 			.setName('API key')
 			.setDesc('Generate from your SmartMemory web UI. Or set SMARTMEMORY_API_KEY env var.')
-			.addText(text => text
-				.setPlaceholder('sm_...')
-				.setValue(this.plugin.settings.apiKey)
-				.onChange(async (value) => {
-					this.plugin.settings.apiKey = value;
-					await this.plugin.saveSettings();
-				}));
+			.addText(text => {
+				text.setPlaceholder('sm_...')
+					.setValue(this.plugin.settings.apiKey)
+					.onChange((value) => {
+						this.plugin.settings.apiKey = value;
+						this.debouncedSave();
+					});
+				// Mask the secret while editing
+				text.inputEl.type = 'password';
+				text.inputEl.autocomplete = 'off';
+			});
 
 		new Setting(containerEl)
 			.setName('Workspace ID')
 			.setDesc('SmartMemory workspace identifier (X-Workspace-Id header)')
 			.addText(text => text
 				.setValue(this.plugin.settings.workspaceId)
-				.onChange(async (value) => {
+				.onChange((value) => {
 					this.plugin.settings.workspaceId = value;
-					await this.plugin.saveSettings();
+					this.debouncedSave();
 				}));
 
 		new Setting(containerEl)
@@ -61,6 +105,9 @@ export class SmartMemorySettingTab extends PluginSettingTab {
 			.addButton(btn => btn
 				.setButtonText('Test')
 				.onClick(async () => {
+					// Flush any pending debounced save so the client is reinitialized
+					// against the freshly-edited settings before we test the connection.
+					await this.flushPendingSave();
 					const ok = await this.plugin.testConnection();
 					new Notice(ok ? 'SmartMemory: connected' : 'SmartMemory: connection failed');
 				}));
@@ -93,9 +140,9 @@ export class SmartMemorySettingTab extends PluginSettingTab {
 			.setDesc('Comma-separated glob patterns to exclude from ingest')
 			.addText(text => text
 				.setValue(this.plugin.settings.excludeFolders.join(','))
-				.onChange(async (value) => {
+				.onChange((value) => {
 					this.plugin.settings.excludeFolders = value.split(',').map(s => s.trim()).filter(Boolean);
-					await this.plugin.saveSettings();
+					this.debouncedSave();
 				}));
 
 		// Enrichment
@@ -150,11 +197,11 @@ export class SmartMemorySettingTab extends PluginSettingTab {
 			.setDesc('Maximum nodes shown in the graph pane')
 			.addText(text => text
 				.setValue(String(this.plugin.settings.graphMaxNodes))
-				.onChange(async (value) => {
+				.onChange((value) => {
 					const n = parseInt(value, 10);
 					if (!isNaN(n) && n > 0) {
 						this.plugin.settings.graphMaxNodes = n;
-						await this.plugin.saveSettings();
+						this.debouncedSave();
 					}
 				}));
 	}

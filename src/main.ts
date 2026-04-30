@@ -6,9 +6,13 @@ import { StatusBarController } from './status-bar';
 import { MappingStore } from './bridge/mapping-store';
 import { IngestService } from './services/ingest';
 import { SearchService } from './services/search';
+import { GraphCache } from './services/graph-cache';
 import { registerIngestCommands } from './commands/ingest';
 import { registerSearchCommands } from './commands/search';
+import { registerAutolinkCommand } from './commands/autolink';
 import { SearchView, SEARCH_VIEW_TYPE } from './views/search-view';
+import { EntityView, ENTITY_VIEW_TYPE } from './views/entity-view';
+import { GraphView, GRAPH_VIEW_TYPE } from './views/graph-view';
 import { DEFAULT_SETTINGS, EMPTY_MAPPINGS, SmartMemorySettings, PluginData } from './types';
 
 export default class SmartMemoryPlugin extends Plugin {
@@ -18,6 +22,7 @@ export default class SmartMemoryPlugin extends Plugin {
 	mappingStore: MappingStore = new MappingStore({ ...EMPTY_MAPPINGS });
 	ingestService: IngestService | null = null;
 	searchService: SearchService | null = null;
+	graphCache: GraphCache | null = null;
 	/** Increments each time the client is reinitialized; used to discard stale async results. */
 	private clientGeneration = 0;
 
@@ -32,8 +37,35 @@ export default class SmartMemoryPlugin extends Plugin {
 		this.initClient();
 		registerIngestCommands(this);
 		registerSearchCommands(this);
+		registerAutolinkCommand(this);
 
 		this.registerView(SEARCH_VIEW_TYPE, (leaf) => new SearchView(leaf, this));
+		this.registerView(ENTITY_VIEW_TYPE, (leaf) => new EntityView(leaf, this));
+		this.registerView(GRAPH_VIEW_TYPE, (leaf) => new GraphView(leaf, this));
+
+		this.addCommand({
+			id: 'smartmemory-open-graph',
+			name: 'Open knowledge graph pane',
+			callback: async () => {
+				const leaf = this.app.workspace.getLeaf();
+				await leaf.setViewState({ type: GRAPH_VIEW_TYPE, active: true });
+				this.app.workspace.revealLeaf(leaf);
+			},
+		});
+
+		// Refresh side views when active note changes
+		this.registerEvent(
+			this.app.workspace.on('active-leaf-change', () => {
+				for (const leaf of this.app.workspace.getLeavesOfType(ENTITY_VIEW_TYPE)) {
+					const view = leaf.view;
+					if (view instanceof EntityView) void view.refresh();
+				}
+				for (const leaf of this.app.workspace.getLeavesOfType(GRAPH_VIEW_TYPE)) {
+					const view = leaf.view;
+					if (view instanceof GraphView) void view.refresh();
+				}
+			})
+		);
 
 		// Connection test on load (non-blocking)
 		this.testConnection().catch(() => {
@@ -46,6 +78,7 @@ export default class SmartMemoryPlugin extends Plugin {
 		this.statusBar = null;
 		this.ingestService = null;
 		this.searchService = null;
+		this.graphCache = null;
 	}
 
 	private initClient(): void {
@@ -55,6 +88,7 @@ export default class SmartMemoryPlugin extends Plugin {
 			this.client = null;
 			this.ingestService = null;
 			this.searchService = null;
+			this.graphCache = null;
 			this.statusBar?.setStatus('disconnected');
 			return;
 		}
@@ -71,6 +105,7 @@ export default class SmartMemoryPlugin extends Plugin {
 		}
 
 		this.searchService = new SearchService(this.client);
+		this.graphCache = new GraphCache(this.client);
 
 		this.ingestService = new IngestService({
 			client: this.client,
@@ -82,6 +117,8 @@ export default class SmartMemoryPlugin extends Plugin {
 					this.statusBar?.setStatus('syncing');
 				} else if (event.type === 'ingest-complete' || event.type === 'enrichment-complete') {
 					this.statusBar?.setLastSync(new Date());
+					// Graph topology likely changed — drop cache so next view refresh reloads
+					this.graphCache?.invalidate();
 				}
 			},
 		});

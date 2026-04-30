@@ -22,6 +22,7 @@ declare module 'smartmemory-sdk-js/core' {
 	export interface GraphAPI {
 		full(): Promise<{ nodes: any[]; edges: any[] }>;
 		path(startId: string, endId: string, maxHops?: number): Promise<any>;
+		[key: string]: any;
 	}
 
 	export class SmartMemoryClient {

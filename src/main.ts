@@ -3,12 +3,21 @@ import { SmartMemoryClient } from 'smartmemory-sdk-js/core';
 import { createObsidianFetch } from './transport';
 import { SmartMemorySettingTab } from './settings';
 import { StatusBarController } from './status-bar';
+import { MappingStore } from './bridge/mapping-store';
+import { IngestService } from './services/ingest';
+import { SearchService } from './services/search';
+import { registerIngestCommands } from './commands/ingest';
+import { registerSearchCommands } from './commands/search';
+import { SearchView, SEARCH_VIEW_TYPE } from './views/search-view';
 import { DEFAULT_SETTINGS, EMPTY_MAPPINGS, SmartMemorySettings, PluginData } from './types';
 
 export default class SmartMemoryPlugin extends Plugin {
 	settings: SmartMemorySettings = DEFAULT_SETTINGS;
 	client: SmartMemoryClient | null = null;
 	statusBar: StatusBarController | null = null;
+	mappingStore: MappingStore = new MappingStore({ ...EMPTY_MAPPINGS });
+	ingestService: IngestService | null = null;
+	searchService: SearchService | null = null;
 	/** Increments each time the client is reinitialized; used to discard stale async results. */
 	private clientGeneration = 0;
 
@@ -21,6 +30,10 @@ export default class SmartMemoryPlugin extends Plugin {
 		this.addSettingTab(new SmartMemorySettingTab(this.app, this));
 
 		this.initClient();
+		registerIngestCommands(this);
+		registerSearchCommands(this);
+
+		this.registerView(SEARCH_VIEW_TYPE, (leaf) => new SearchView(leaf, this));
 
 		// Connection test on load (non-blocking)
 		this.testConnection().catch(() => {
@@ -31,6 +44,8 @@ export default class SmartMemoryPlugin extends Plugin {
 	onunload(): void {
 		this.client = null;
 		this.statusBar = null;
+		this.ingestService = null;
+		this.searchService = null;
 	}
 
 	private initClient(): void {
@@ -38,6 +53,8 @@ export default class SmartMemoryPlugin extends Plugin {
 		const apiKey = this.resolveApiKey();
 		if (!apiKey || !this.settings.apiUrl) {
 			this.client = null;
+			this.ingestService = null;
+			this.searchService = null;
 			this.statusBar?.setStatus('disconnected');
 			return;
 		}
@@ -52,6 +69,22 @@ export default class SmartMemoryPlugin extends Plugin {
 		if (this.settings.workspaceId) {
 			this.client.setTeamId(this.settings.workspaceId);
 		}
+
+		this.searchService = new SearchService(this.client);
+
+		this.ingestService = new IngestService({
+			client: this.client,
+			app: this.app,
+			mappingStore: this.mappingStore,
+			settings: this.settings,
+			onEvent: (event) => {
+				if (event.type === 'batch-progress') {
+					this.statusBar?.setStatus('syncing');
+				} else if (event.type === 'ingest-complete' || event.type === 'enrichment-complete') {
+					this.statusBar?.setLastSync(new Date());
+				}
+			},
+		});
 	}
 
 	/**
@@ -89,16 +122,24 @@ export default class SmartMemoryPlugin extends Plugin {
 	async loadSettings(): Promise<void> {
 		const data = (await this.loadData()) as PluginData | null;
 		this.settings = { ...DEFAULT_SETTINGS, ...(data?.settings || {}) };
+		this.mappingStore = new MappingStore(data?.mappings || EMPTY_MAPPINGS);
 	}
 
 	async saveSettings(): Promise<void> {
-		const existing = (await this.loadData()) as PluginData | null;
 		const data: PluginData = {
 			settings: this.settings,
-			mappings: existing?.mappings || EMPTY_MAPPINGS,
+			mappings: this.mappingStore.toJSON(),
 		};
 		await this.saveData(data);
 		// Reinitialize client when settings change (auth, URL, workspace)
 		this.initClient();
+	}
+
+	async saveMappings(): Promise<void> {
+		const data: PluginData = {
+			settings: this.settings,
+			mappings: this.mappingStore.toJSON(),
+		};
+		await this.saveData(data);
 	}
 }

@@ -37,7 +37,19 @@ export class PluginSettingTab {
 
 export class ItemView {
 	containerEl: any;
+	leaf: any;
+	getViewType(): string { return ''; }
+	getDisplayText(): string { return ''; }
+	getIcon(): string { return ''; }
 }
+
+export class WorkspaceLeaf {
+	view: any;
+}
+
+export const MarkdownView = class {
+	editor: any;
+};
 
 export class Modal {
 	app: any;
@@ -46,4 +58,15 @@ export class Modal {
 
 export class Notice {
 	constructor(_msg: string) {}
+}
+
+export class TFile {
+	path: string = '';
+	extension: string = 'md';
+	parent: TFolder | null = null;
+}
+
+export class TFolder {
+	path: string = '';
+	children: Array<TFile | TFolder> = [];
 }

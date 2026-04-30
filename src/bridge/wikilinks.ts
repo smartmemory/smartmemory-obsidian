@@ -128,7 +128,29 @@ export function findEntityMentions(
 	}
 
 	proposals.sort((a, b) => a.start - b.start);
-	return proposals;
+	return deconflict(proposals);
+}
+
+/**
+ * Remove overlapping proposals. When two matches overlap (e.g. "New York"
+ * and "York"), keep the longer one — it conveys more specific intent.
+ * Proposals must be pre-sorted by start offset.
+ */
+function deconflict(sorted: LinkProposal[]): LinkProposal[] {
+	const out: LinkProposal[] = [];
+	for (const p of sorted) {
+		const last = out[out.length - 1];
+		if (last && p.start < last.end) {
+			// Overlap — keep the longer match
+			if ((p.end - p.start) > (last.end - last.start)) {
+				out[out.length - 1] = p;
+			}
+			// else: drop the shorter overlapping proposal
+			continue;
+		}
+		out.push(p);
+	}
+	return out;
 }
 
 /**

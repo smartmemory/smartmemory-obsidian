@@ -8,6 +8,9 @@ export class EntityView extends ItemView {
 	private plugin: SmartMemoryPlugin;
 	private rootEl: HTMLElement | null = null;
 	private currentFile: TFile | null = null;
+	/** Increments on every refresh; in-flight fetches whose seq doesn't match
+	 *  are discarded to prevent stale renders from rapid leaf changes. */
+	private refreshSeq = 0;
 
 	constructor(leaf: WorkspaceLeaf, plugin: SmartMemoryPlugin) {
 		super(leaf);
@@ -28,6 +31,7 @@ export class EntityView extends ItemView {
 	async refresh(file?: TFile | null): Promise<void> {
 		const root = this.rootEl;
 		if (!root) return;
+		const seq = ++this.refreshSeq;
 		root.empty();
 
 		const target = file ?? this.plugin.app.workspace.getActiveFile();
@@ -60,6 +64,9 @@ export class EntityView extends ItemView {
 
 		try {
 			const item: any = await client.memories.get(itemId);
+			// Discard if a newer refresh has started during the await
+			if (seq !== this.refreshSeq) return;
+
 			const entities: Array<{ name: string; type?: string }> = item?.entities || [];
 
 			if (entities.length === 0) {
@@ -81,6 +88,7 @@ export class EntityView extends ItemView {
 				chip.addEventListener('click', () => this.showCrossNoteResults(entity.name, root));
 			}
 		} catch (err) {
+			if (seq !== this.refreshSeq) return;
 			root.createDiv({
 				cls: 'smartmemory-entity-empty',
 				text: `Failed to load entities: ${err instanceof Error ? err.message : String(err)}`,

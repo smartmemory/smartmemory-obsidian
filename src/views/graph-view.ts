@@ -19,6 +19,7 @@ export class GraphView extends ItemView {
 	private cy: cytoscape.Core | null = null;
 	private rootEl: HTMLElement | null = null;
 	private currentFocusId: string | null = null;
+	private refreshSeq = 0;
 
 	constructor(leaf: WorkspaceLeaf, plugin: SmartMemoryPlugin) {
 		super(leaf);
@@ -59,6 +60,7 @@ export class GraphView extends ItemView {
 	}
 
 	async refresh(force = false): Promise<void> {
+		const seq = ++this.refreshSeq;
 		const graphCache = this.plugin.graphCache;
 		if (!graphCache) {
 			this.showMessage('Not connected.');
@@ -72,6 +74,10 @@ export class GraphView extends ItemView {
 
 		try {
 			const fullGraph = await graphCache.get(force);
+			// Discard if a newer refresh started during the await — prevents
+			// rapid leaf-changes from rendering stale neighborhoods.
+			if (seq !== this.refreshSeq) return;
+
 			const subgraph = focusId
 				? extractNeighborhood(fullGraph, focusId, {
 						hops: this.plugin.settings.graphDefaultHops,
@@ -82,6 +88,7 @@ export class GraphView extends ItemView {
 			this.currentFocusId = focusId;
 			this.renderGraph(subgraph.nodes, subgraph.edges, focusId);
 		} catch (err) {
+			if (seq !== this.refreshSeq) return;
 			this.showMessage(`Failed to load graph: ${err instanceof Error ? err.message : String(err)}`);
 		}
 	}

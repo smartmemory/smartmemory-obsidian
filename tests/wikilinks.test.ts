@@ -104,6 +104,26 @@ describe('findEntityMentions', () => {
 		expect(proposals[1].entityName).toBe('Isaac Asimov');
 	});
 
+	it('deconflicts overlapping matches: keeps the longer match', () => {
+		const text = 'I live in New York City.';
+		const proposals = findEntityMentions(text, [
+			{ name: 'New York', target: 'newyork.md' },
+			{ name: 'York', target: 'york.md' },
+		]);
+		expect(proposals).toHaveLength(1);
+		expect(proposals[0].entityName).toBe('New York');
+	});
+
+	it('deconflicts when shorter match comes first in candidate list', () => {
+		const text = 'The Empire State Building stands tall.';
+		const proposals = findEntityMentions(text, [
+			{ name: 'State', target: 'state.md' },
+			{ name: 'Empire State Building', target: 'esb.md' },
+		]);
+		expect(proposals).toHaveLength(1);
+		expect(proposals[0].entityName).toBe('Empire State Building');
+	});
+
 	it('handles empty entity list', () => {
 		expect(findEntityMentions('any text', [])).toEqual([]);
 	});

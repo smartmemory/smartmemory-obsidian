@@ -3,6 +3,7 @@ import type SmartMemoryPlugin from '../main';
 import { findEntityMentions, EntityCandidate } from '../bridge/wikilinks';
 import { AutolinkModal } from '../views/autolink-modal';
 import { readSmartMemoryId } from '../bridge/frontmatter';
+import { toWikilinkTarget } from '../util/wikilink-path';
 
 export function registerAutolinkCommand(plugin: SmartMemoryPlugin): void {
 	plugin.addCommand({
@@ -49,8 +50,7 @@ export function registerAutolinkCommand(plugin: SmartMemoryPlugin): void {
 				if (!target) continue;
 				// Don't propose linking to the same note we're editing
 				if (target === file.path) continue;
-				const linkPath = target.replace(/\.md$/, '');
-				candidates.push({ name: entity.name, target: linkPath });
+				candidates.push({ name: entity.name, target: toWikilinkTarget(target) });
 			}
 
 			if (candidates.length === 0) {

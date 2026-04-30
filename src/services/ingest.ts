@@ -93,9 +93,26 @@ export class IngestService {
 				});
 				itemId = existingId;
 			} else if (existingId && oldHash === newHash) {
-				// Content unchanged — no-op (avoids redundant pipeline runs)
-				this.emit({ type: 'ingest-complete', path: file.path, itemId: existingId });
-				return { itemId: existingId };
+				// Content unchanged — verify the remote memory still exists before
+				// short-circuiting. If it was deleted server-side, we need to
+				// re-ingest so the user's note is actually represented in memory.
+				try {
+					const remote: any = await this.client.memories.get(existingId);
+					if (remote?.item_id) {
+						this.emit({ type: 'ingest-complete', path: file.path, itemId: existingId });
+						return { itemId: existingId };
+					}
+				} catch {
+					// Remote 404 or transient — fall through to fresh ingest below
+				}
+				// Remote gone: drop stale mapping and proceed with fresh ingest
+				this.store.handleDelete(file.path);
+				const result = await this.client.memories.ingest({
+					content,
+					origin: 'import:obsidian',
+					metadata: { source_path: file.path },
+				});
+				itemId = result.item_id;
 			} else {
 				// First time OR content changed — full pipeline ingest
 				const payload: any = {
@@ -114,7 +131,17 @@ export class IngestService {
 			this.store.setContentHash(file.path, newHash);
 
 			// Always write the ID + sync timestamp; entities/relations come from enrichFile()
-			await writeSmartMemoryFrontmatter(this.app, file, { id: itemId }, this.settings);
+			const writeResult = await writeSmartMemoryFrontmatter(this.app, file, { id: itemId }, this.settings);
+			if (!writeResult.ok) {
+				// Frontmatter write failed (malformed YAML in the note) — surface
+				// to caller. Mapping is still updated so re-running enrichment
+				// can recover when the file is fixed.
+				this.emit({
+					type: 'ingest-error',
+					path: file.path,
+					error: `frontmatter write failed: ${writeResult.error.message}`,
+				});
+			}
 
 			this.emit({ type: 'ingest-complete', path: file.path, itemId });
 
@@ -137,6 +164,11 @@ export class IngestService {
 	 * Two-step enrichment: poll GET /memory/{itemId} until extracted entities
 	 * are available, then write them to the note's frontmatter. Times out
 	 * after pollMaxAttempts attempts.
+	 *
+	 * Guards against duplicate-ingest races: before writing frontmatter we
+	 * check that the file is still mapped to the same itemId. If a newer
+	 * ingest has remapped the file to a different itemId, this enrichment
+	 * is stale and we skip the write.
 	 */
 	async enrichFile(file: TFile): Promise<void> {
 		const itemId = this.store.getMemoryId(file.path) ?? readSmartMemoryId(this.app, file);
@@ -157,12 +189,28 @@ export class IngestService {
 			}
 
 			if (item?.entities && item.entities.length > 0) {
-				await writeSmartMemoryFrontmatter(this.app, file, {
+				// Stale check: did a newer ingest replace our mapping?
+				const currentMapping = this.store.getMemoryId(file.path);
+				if (currentMapping && currentMapping !== itemId) {
+					// Newer ingest has taken over — drop this enrichment to avoid
+					// overwriting fresher metadata with stale results.
+					return;
+				}
+
+				const writeResult = await writeSmartMemoryFrontmatter(this.app, file, {
 					id: itemId,
 					memoryType: item.memory_type,
 					entities: item.entities,
 					relations: item.relations || [],
 				}, this.settings);
+				if (!writeResult.ok) {
+					this.emit({
+						type: 'ingest-error',
+						path: file.path,
+						error: `enrichment write failed: ${writeResult.error.message}`,
+					});
+					return;
+				}
 
 				// Cache entity → file mappings for auto-linking later
 				for (const entity of item.entities) {

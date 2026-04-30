@@ -83,6 +83,18 @@ export class AutolinkModal extends Modal {
 			this.close();
 			return;
 		}
+
+		// Verify the note hasn't changed since the modal opened.
+		// Offsets in `accepted` are relative to `originalText`; if the file
+		// was edited externally (auto-ingest re-enriching frontmatter, user
+		// typing, sync, etc.), applying our patch would clobber their edits.
+		const current = await this.app.vault.read(this.file);
+		if (current !== this.originalText) {
+			new Notice('SmartMemory: note changed since auto-link preview. Aborted to prevent data loss.');
+			this.close();
+			return;
+		}
+
 		const newText = applyLinkInsertions(this.originalText, accepted);
 		await this.app.vault.modify(this.file, newText);
 		new Notice(`SmartMemory: inserted ${accepted.length} wikilink${accepted.length === 1 ? '' : 's'}`);

@@ -7,6 +7,12 @@ export class GraphCache {
 	private cached: FullGraph | null = null;
 	private cachedAt: number = 0;
 	private inflight: Promise<FullGraph> | null = null;
+	/** Monotonic generation marker. Each fetch is tagged at start; only the
+	 *  highest-generation result wins when writing back to the cache. */
+	private generation = 0;
+	/** Highest generation that has already been written to the cache.
+	 *  Older fetches that complete after a newer one are discarded. */
+	private latestWrittenGeneration = 0;
 
 	constructor(private client: SmartMemoryClient) {}
 
@@ -14,16 +20,29 @@ export class GraphCache {
 		const fresh = !force && this.cached && (Date.now() - this.cachedAt) < CACHE_TTL_MS;
 		if (fresh && this.cached) return this.cached;
 
-		if (this.inflight) return this.inflight;
+		// Reuse in-flight only when not forcing: a forced refresh wants
+		// guaranteed-fresh data, even if a non-force fetch is already running.
+		if (this.inflight && !force) return this.inflight;
 
-		this.inflight = this.fetch();
-		try {
-			const result = await this.inflight;
+		const myGeneration = ++this.generation;
+		const fetchPromise = this.fetch().then((result) => {
+			// Discard if a newer fetch already wrote to the cache. This prevents
+			// a slow earlier request from overwriting fresher data from a
+			// force-refresh that landed first.
+			if (myGeneration < this.latestWrittenGeneration) {
+				return result; // still return to the caller, just don't cache
+			}
 			this.cached = result;
 			this.cachedAt = Date.now();
+			this.latestWrittenGeneration = myGeneration;
 			return result;
+		});
+
+		if (!force) this.inflight = fetchPromise;
+		try {
+			return await fetchPromise;
 		} finally {
-			this.inflight = null;
+			if (this.inflight === fetchPromise) this.inflight = null;
 		}
 	}
 

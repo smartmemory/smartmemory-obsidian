@@ -1,6 +1,7 @@
 import { App, Modal, MarkdownView, Notice, TFile } from 'obsidian';
 import type SmartMemoryPlugin from '../main';
 import type { SearchResult } from '../services/search';
+import { toWikilinkTarget } from '../util/wikilink-path';
 
 export class RecallModal extends Modal {
 	private plugin: SmartMemoryPlugin;
@@ -95,8 +96,7 @@ export class RecallModal extends Modal {
 			new Notice('SmartMemory: this memory has no vault note to link to');
 			return;
 		}
-		const linkText = filePath.replace(/\.md$/, '');
-		view.editor.replaceSelection(`[[${linkText}]]`);
+		view.editor.replaceSelection(`[[${toWikilinkTarget(filePath)}]]`);
 	}
 
 	private async openResult(result: SearchResult): Promise<void> {

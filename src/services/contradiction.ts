@@ -8,8 +8,8 @@ export interface SupersessionFinding {
 	otherSnippet: string;
 }
 
-const SUPERSEDED_BY_TYPES = new Set(['SUPERSEDED_BY', 'SUPERCEDED_BY']);
-const SUPERSEDES_TYPES = new Set(['SUPERSEDES', 'SUPERCEDES']);
+const SUPERSEDED_BY_TYPES = new Set(['SUPERSEDED_BY']);
+const SUPERSEDES_TYPES = new Set(['SUPERSEDES']);
 
 /**
  * Detects supersession relationships via the /memory/{id}/neighbors endpoint.

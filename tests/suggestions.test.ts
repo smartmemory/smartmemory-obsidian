@@ -26,7 +26,7 @@ describe('SuggestionEngine', () => {
 			{ itemId: 'a', content: 'related', memoryType: 'semantic', score: 0.9, snippet: 'related', origin: null, entities: [] },
 		]);
 		engine = new SuggestionEngine({
-			search,
+			getSearch: () => search,
 			settings: { ...DEFAULT_SETTINGS, inlineSuggestionsEnabled: true },
 			onSuggestions: (results) => received.push(results),
 		});
@@ -91,6 +91,17 @@ describe('SuggestionEngine', () => {
 		expect(received.length).toBeGreaterThan(0);
 		const last = received[received.length - 1];
 		expect(last.map(r => r.itemId)).toEqual(['high']);
+	});
+
+	it('does nothing when getSearch returns null (disconnected)', async () => {
+		const engineDisconnected = new SuggestionEngine({
+			getSearch: () => null,
+			settings: { ...DEFAULT_SETTINGS, inlineSuggestionsEnabled: true },
+			onSuggestions: (results) => received.push(results),
+		});
+		engineDisconnected.queryDebounced('long enough paragraph here');
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(received).toEqual([]);
 	});
 
 	it('does nothing when disabled in settings', async () => {

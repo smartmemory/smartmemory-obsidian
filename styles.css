@@ -408,7 +408,7 @@
 	border-radius: 999px;
 	box-shadow: var(--shadow-s);
 	font-size: 0.85em;
-	max-width: 80%;
+	max-width: min(80%, 600px);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -502,6 +502,20 @@
 	color: var(--text-muted);
 	font-size: 0.85em;
 	cursor: pointer;
+}
+
+/* === Accessibility: focus-visible outlines for keyboard navigation === */
+.smartmemory-status-bar:focus-visible,
+.smartmemory-status-menu-item:focus-visible,
+.smartmemory-banner-action:focus-visible,
+.smartmemory-banner-dismiss:focus-visible,
+.smartmemory-banner-link:focus-visible,
+.smartmemory-suggestion-link:focus-visible,
+.smartmemory-suggestion-dismiss:focus-visible,
+.smartmemory-search-result:focus-visible,
+.smartmemory-entity-chip:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
 }
 
 /* === Upgrade modal === */

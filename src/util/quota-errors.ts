@@ -9,13 +9,16 @@ export const UPGRADE_URL = 'https://app.smartmemory.ai/billing';
  */
 export function handleQuotaError(app: App, err: unknown): boolean {
 	const message = err instanceof Error ? err.message : String(err);
-	const status = (err as any)?.status;
+	const errAny = err as any;
+	const status = errAny?.status;
+	// Prefer structured error_code from the SDK's APIError details
+	const errorCode = errAny?.data?.error_code || errAny?.error_code;
 
-	if (status === 403 || message.includes('quota_exceeded')) {
+	if (status === 403 || errorCode === 'quota_exceeded' || message.includes('quota_exceeded')) {
 		new UpgradeModal(app, 'Free tier note limit reached').open();
 		return true;
 	}
-	if (status === 429 || message.includes('rate_limit')) {
+	if (status === 429 || errorCode === 'rate_limit' || message.includes('rate_limit')) {
 		new Notice('SmartMemory: daily limit reached. Upgrade to continue.');
 		return true;
 	}

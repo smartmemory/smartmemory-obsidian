@@ -25,7 +25,9 @@ export class InlineSuggestions {
 
 	start(): void {
 		this.engine = new SuggestionEngine({
-			search: this.plugin.searchService!, // checked at call site
+			// Lazy getter — resolves the current SearchService each query so
+			// settings-triggered client reinits don't leave us with a stale ref
+			getSearch: () => this.plugin.searchService,
 			settings: this.plugin.settings,
 			onSuggestions: (results, query) => this.render(results, query),
 		});
@@ -101,11 +103,10 @@ export class InlineSuggestions {
 		const dismiss = widget.createEl('button', {
 			cls: 'smartmemory-suggestion-dismiss',
 			text: '×',
+			attr: { 'aria-label': 'Dismiss suggestion' },
 		});
 		dismiss.addEventListener('click', () => this.clearWidget());
-
-		// Position widget at bottom of editor area
-		view.containerEl.appendChild(widget);
+		// Widget already attached to view.containerEl via createDiv above
 	}
 
 	private clearWidget(): void {

@@ -7,6 +7,10 @@ export class KeyedDebouncer<K> {
 
 	constructor(private delayMs: number) {}
 
+	setDelay(ms: number): void {
+		this.delayMs = ms;
+	}
+
 	schedule(key: K, fn: () => void): void {
 		const existing = this.timers.get(key);
 		if (existing !== undefined) clearTimeout(existing);

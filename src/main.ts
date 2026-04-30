@@ -31,8 +31,12 @@ export default class SmartMemoryPlugin extends Plugin {
 	contradictionService: ContradictionService | null = null;
 	contradictionBanner: ContradictionBanner | null = null;
 	inlineSuggestions: InlineSuggestions | null = null;
+	vaultEvents: VaultEvents | null = null;
 	/** Increments each time the client is reinitialized; used to discard stale async results. */
 	private clientGeneration = 0;
+	/** Tail of pending saveData() calls; new writes chain off it so we never
+	 *  have two saveData() in flight against the same blob. */
+	private writeTail: Promise<void> = Promise.resolve();
 
 	async onload(): Promise<void> {
 		await this.loadSettings();
@@ -59,7 +63,8 @@ export default class SmartMemoryPlugin extends Plugin {
 		this.inlineSuggestions = new InlineSuggestions(this);
 		this.inlineSuggestions.start();
 
-		new VaultEvents(this).register();
+		this.vaultEvents = new VaultEvents(this);
+		this.vaultEvents.register();
 
 		// First-launch onboarding (deferred so workspace is ready)
 		if (!this.settings.hasCompletedOnboarding) {
@@ -112,6 +117,7 @@ export default class SmartMemoryPlugin extends Plugin {
 		this.contradictionBanner = null;
 		this.inlineSuggestions?.stop();
 		this.inlineSuggestions = null;
+		this.vaultEvents = null;
 	}
 
 	private initClient(): void {
@@ -201,31 +207,41 @@ export default class SmartMemoryPlugin extends Plugin {
 	}
 
 	async saveSettings(): Promise<void> {
-		const data: PluginData = {
-			settings: this.settings,
-			mappings: this.mappingStore.toJSON(),
-		};
-		await this.saveData(data);
+		await this.serializedSave();
 		// Reinitialize client when settings change (auth, URL, workspace)
 		this.initClient();
 		// Forward to runtime singletons
 		this.ingestService?.updateSettings?.(this.settings);
 		this.inlineSuggestions?.updateSettings();
-	}
-
-	private runCommand(commandId: string): void {
-		// Obsidian's commands API is on app.commands, but the public types don't
-		// expose executeCommandById; we go via the internal API which is stable
-		// across versions used by community plugins.
-		(this.app as any).commands?.executeCommandById?.(`${this.manifest.id}:${commandId}`)
-			|| (this.app as any).commands?.executeCommandById?.(commandId);
+		this.vaultEvents?.updateSettings();
 	}
 
 	async saveMappings(): Promise<void> {
+		await this.serializedSave();
+	}
+
+	/** All persistence goes through this serialized chain so concurrent calls
+	 *  (e.g. settings save while a rename event fires) can't clobber each other. */
+	private serializedSave(): Promise<void> {
+		const next = this.writeTail.then(() => this.persistOnce());
+		// Don't propagate failures forward — each save's caller awaits its own promise
+		this.writeTail = next.catch(() => {});
+		return next;
+	}
+
+	private async persistOnce(): Promise<void> {
 		const data: PluginData = {
 			settings: this.settings,
 			mappings: this.mappingStore.toJSON(),
 		};
 		await this.saveData(data);
+	}
+
+	private runCommand(commandId: string): void {
+		// Obsidian's commands API is on app.commands; community-plugin pattern.
+		// Note: registered commands are stored as `${manifest.id}:${commandId}`,
+		// so the prefixed form is the canonical lookup.
+		const prefixed = `${this.manifest.id}:${commandId}`;
+		(this.app as any).commands?.executeCommandById?.(prefixed);
 	}
 }

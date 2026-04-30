@@ -101,6 +101,8 @@ export class ContradictionBanner {
 
 		const banner = container.createDiv({ cls: BANNER_CLASS });
 		banner.dataset.kind = finding.kind;
+		banner.setAttribute('role', 'status');
+		banner.setAttribute('aria-live', 'polite');
 
 		const message = finding.kind === 'superseded'
 			? '⚠ This note has been superseded by a newer memory.'
@@ -132,6 +134,7 @@ export class ContradictionBanner {
 		const dismissBtn = banner.createEl('button', {
 			cls: 'smartmemory-banner-dismiss',
 			text: '×',
+			attr: { 'aria-label': 'Dismiss banner' },
 		});
 		dismissBtn.addEventListener('click', () => banner.remove());
 

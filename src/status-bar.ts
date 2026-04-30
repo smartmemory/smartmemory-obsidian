@@ -74,9 +74,12 @@ export class StatusBarController {
 			addItem('Upgrade to remove free tier limit', this.actions.onUpgrade);
 		}
 
-		// Click outside to dismiss
+		// Click outside to dismiss. Check both the menu and the status bar
+		// element so clicking the dot/text spans inside the bar doesn't
+		// dismiss-then-reopen on the same bubbled click.
 		const dismiss = (evt: MouseEvent) => {
-			if (!menu.contains(evt.target as Node) && evt.target !== this.el) {
+			const target = evt.target as Node;
+			if (!menu.contains(target) && !this.el.contains(target)) {
 				menu.remove();
 				document.removeEventListener('click', dismiss, true);
 			}
@@ -86,6 +89,8 @@ export class StatusBarController {
 
 	private render(): void {
 		this.el.empty();
+		this.el.setAttribute('role', 'button');
+		this.el.setAttribute('tabindex', '0');
 
 		const dotColor = {
 			connected: 'green',
@@ -96,6 +101,9 @@ export class StatusBarController {
 		const dot = this.el.createSpan({ cls: 'smartmemory-status-dot' });
 		dot.style.color = dotColor;
 		dot.setText('●');
+		// Color is the visual signal but screen readers need text
+		dot.setAttribute('aria-label', `SmartMemory ${this.status}`);
+		dot.setAttribute('role', 'status');
 
 		const text = this.el.createSpan({ cls: 'smartmemory-status-text' });
 

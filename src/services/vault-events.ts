@@ -26,6 +26,12 @@ export class VaultEvents {
 		this.createDebouncer = new KeyedDebouncer<string>(delay);
 	}
 
+	updateSettings(): void {
+		const delay = Math.max(500, this.plugin.settings.ingestDebounceMs);
+		this.modifyDebouncer.setDelay(delay);
+		this.createDebouncer.setDelay(delay);
+	}
+
 	register(): void {
 		const { app } = this.plugin;
 
@@ -43,6 +49,7 @@ export class VaultEvents {
 				if (!(file instanceof TFile)) return;
 				this.plugin.mappingStore.handleDelete(file.path);
 				this.modifyDebouncer.cancel(file.path);
+				this.createDebouncer.cancel(file.path);
 				void this.plugin.saveMappings();
 			})
 		);

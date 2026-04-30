@@ -14,7 +14,9 @@ export function frequencyToDelayMs(frequency: SuggestionFrequency): number {
 }
 
 export interface SuggestionEngineConfig {
-	search: SearchService;
+	/** Getter returns the current SearchService or null if disconnected.
+	 *  Lazy resolution avoids stale references when settings reinitialize the client. */
+	getSearch: () => SearchService | null;
 	settings: SmartMemorySettings;
 	onSuggestions: (results: SearchResult[], query: string) => void;
 }
@@ -30,14 +32,14 @@ export interface SuggestionEngineConfig {
  *   doesn't support cancellation
  */
 export class SuggestionEngine {
-	private search: SearchService;
+	private getSearch: () => SearchService | null;
 	private settings: SmartMemorySettings;
 	private onSuggestions: (results: SearchResult[], query: string) => void;
 	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 	private requestSeq = 0;
 
 	constructor(cfg: SuggestionEngineConfig) {
-		this.search = cfg.search;
+		this.getSearch = cfg.getSearch;
 		this.settings = cfg.settings;
 		this.onSuggestions = cfg.onSuggestions;
 	}
@@ -71,8 +73,10 @@ export class SuggestionEngine {
 
 	private async runQuery(query: string): Promise<void> {
 		const seq = ++this.requestSeq;
+		const search = this.getSearch();
+		if (!search) return; // not connected
 		try {
-			const results = await this.search.search({
+			const results = await search.search({
 				query,
 				topK: 3,
 				multiHop: false,

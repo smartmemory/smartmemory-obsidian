@@ -6,12 +6,20 @@ import postcss from 'postcss';
 import tailwindcss from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
 
-// Force a single React/ReactDOM instance across the bundle.
-// @smartmemory/graph is a file: dep with its own node_modules/react,
-// which esbuild would otherwise treat as a separate React. Two React
+// Force single instances of React/ReactDOM/Cytoscape across the bundle.
+// @smartmemory/graph is a file: dep with its own nested node_modules,
+// which esbuild would otherwise treat as separate copies. Two React
 // instances → duplicate dispatcher → "useState of null" at runtime.
+// Two Cytoscape instances → layout extensions (cose-bilkent, cola,
+// dagre) register on one but `cy.layout({name: 'cose-bilkent'})`
+// silently falls back to grid on the other → all nodes stack at origin.
 const reactDir = resolve('./node_modules/react');
 const reactDomDir = resolve('./node_modules/react-dom');
+// Cytoscape lives under @smartmemory/graph (its dep). Pin the path so
+// the layout-extension registration in @smartmemory/graph's
+// useCytoscape.js (cytoscape.use(coseBilkent)) and any other consumer
+// share one cytoscape singleton.
+const cytoscapeDir = resolve('./node_modules/@smartmemory/graph/node_modules/cytoscape');
 
 const prod = process.argv[2] === 'production';
 
@@ -62,6 +70,7 @@ const context = await esbuild.context({
 		'react-dom': reactDomDir,
 		'react-dom/client': reactDomDir + '/client.js',
 		'react/jsx-runtime': reactDir + '/jsx-runtime.js',
+		'cytoscape': cytoscapeDir,
 	},
 	define: {
 		__SMARTMEMORY_VERSION__: JSON.stringify(manifest.version),

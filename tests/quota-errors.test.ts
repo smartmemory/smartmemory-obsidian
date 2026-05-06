@@ -88,3 +88,36 @@ describe('handleQuotaError — actual server contract (429 for both quotas)', ()
 		expect(noticeSpy).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe('handleQuotaError — DIST-OBSIDIAN-LITE-1 lite-mode reroute', () => {
+	beforeEach(() => {
+		noticeSpy.mockClear();
+		modalOpenSpy.mockClear();
+	});
+
+	it('memory quota in lite opens Sync-to-cloud modal (not upgrade modal)', () => {
+		const err = { status: 429, data: { detail: 'Memory quota exceeded' } };
+		expect(handleQuotaError(fakeApp, err, { isLite: true })).toBe(true);
+		// Modal opens regardless of which copy is shown — the test for *which*
+		// modal opens lives in openUpgradeModal coverage; here we just confirm
+		// the lite branch still classifies the error correctly.
+		expect(modalOpenSpy).toHaveBeenCalledTimes(1);
+		expect(noticeSpy).not.toHaveBeenCalled();
+	});
+
+	it('rate-limit in lite shows lite-flavored notice copy', () => {
+		const err = { status: 429, data: { detail: 'Daily query quota exceeded' } };
+		expect(handleQuotaError(fakeApp, err, { isLite: true })).toBe(true);
+		expect(noticeSpy).toHaveBeenCalledTimes(1);
+		const callArg = (noticeSpy.mock.calls[0] as any)[0] as string;
+		expect(callArg.toLowerCase()).toContain('sync');
+	});
+
+	it('default (no isLite) preserves cloud copy on rate-limit', () => {
+		const err = { status: 429, data: { detail: 'Daily query quota exceeded' } };
+		expect(handleQuotaError(fakeApp, err)).toBe(true);
+		expect(noticeSpy).toHaveBeenCalledTimes(1);
+		const callArg = (noticeSpy.mock.calls[0] as any)[0] as string;
+		expect(callArg.toLowerCase()).toContain('upgrade');
+	});
+});

@@ -20,7 +20,7 @@ export function registerIngestCommands(plugin: SmartMemoryPlugin): void {
 				await plugin.ingestService.ingestFile(file);
 				new Notice('SmartMemory: ingested');
 			} catch (err) {
-				if (!handleQuotaError(plugin.app, err)) {
+				if (!handleQuotaError(plugin.app, err, { isLite: plugin.isLite })) {
 					new Notice(`SmartMemory: ingest failed — ${err instanceof Error ? err.message : err}`);
 				}
 			}

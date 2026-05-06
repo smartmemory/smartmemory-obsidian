@@ -129,7 +129,7 @@ export class SearchView extends ItemView {
 			this.renderResults(results);
 		} catch (err) {
 			if (seq !== this.requestSeq) return;
-			if (handleQuotaError(this.plugin.app, err)) {
+			if (handleQuotaError(this.plugin.app, err, { isLite: this.plugin.isLite })) {
 				this.renderError('Daily search limit reached. Upgrade to continue.');
 				return;
 			}

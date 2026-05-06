@@ -2,6 +2,22 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.0] — 2026-04-30 — DIST-OBSIDIAN-LITE-1: zero-Docker install via smartmemory daemon
+
+The plugin now works end-to-end against `smartmemory daemon` (DIST-DAEMON-1), so users can install with `pip install smartmemory && smartmemory daemon start` — no Docker, no FalkorDB+Redis+Mongo. See [`smart-memory-docs/docs/features/DIST-OBSIDIAN-LITE-1/`](https://github.com/smart-memory/smart-memory-docs/tree/main/docs/features/DIST-OBSIDIAN-LITE-1) for the full design + blueprint + report.
+
+### Added
+- **Lite-mode auto-detection.** After every successful connection the plugin probes `GET /health` and reads `mode` + `capabilities`. `runtime.isLite` flips UI affordances. Probe failure preserves last-known mode (a transient daemon hiccup must not flip a known-lite session back to cloud).
+- **Cloud / Local radio in onboarding.** First-launch modal asks where data lives. Local path defaults `apiUrl` to `http://127.0.0.1:9014`, hides the API key field, and offers a "Connect to local daemon" button that persists settings before opening the settings tab.
+- **Mode dropdown in settings.** Mirror of the onboarding radio. Switching modes rewrites `apiUrl` between hosted and daemon defaults (only when the URL was on the *other* mode's default — custom URLs survive). API key field hidden when lite is selected.
+- **"Sync to cloud" affordance.** When `runtime.isLite === true`, the upgrade modal codepath swaps to a new `SyncToCloudModal` pitching backup + cross-device + teams instead of a quota upgrade. Primary action opens `https://app.smartmemory.ai/signup?ref=obsidian-lite`.
+- New `src/services/health.ts` with `probeHealth()` + `HealthMode` union. Validates response `mode` against the known union literal so daemon evolutions don't propagate arbitrary strings as a typed `HealthMode`.
+- 12 new tests: 9 health-probe tests (lite/cloud/missing-mode/network-failure/non-200/`/memory`-suffix stripping) + 3 quota-errors lite-reroute tests.
+
+### Notes
+- This release pairs with daemon changes shipping in the `smart-memory` repo simultaneously: `PATCH /{id}` (new), `DELETE /{id}` (lifted from 405 → 204/404 with vector-store cascade), `POST /ingest` and `POST /search` accept the SDK's contract shapes, `/neighbors` carries `direction` per neighbor, `/health` exposes `mode` + `capabilities`. Older daemons (pre-DIST-OBSIDIAN-LITE-1) report `mode: undefined` and the plugin defaults to cloud behavior — backward compatible.
+- "Sync to cloud" only replaces the upgrade modal when the plugin has detected lite mode. If the daemon is unreachable on first connection, the plugin assumes cloud and shows the historical upgrade copy. Re-probe runs on every reconnection.
+
 ## [0.1.12] — 2026-04-30 — DIST-OBSIDIAN-1 Phase 7 close-out
 
 ### Fixed

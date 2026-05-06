@@ -33,6 +33,11 @@ export default class SmartMemoryPlugin extends Plugin {
 	contradictionBanner: ContradictionBanner | null = null;
 	inlineSuggestions: InlineSuggestions | null = null;
 	vaultEvents: VaultEvents | null = null;
+	/** DIST-OBSIDIAN-LITE-1: set by health probe on each (re)connection.
+	 * Drives UI affordances — onboarding radio default, "Sync to cloud"
+	 * affordance copy, hidden API key field, etc.
+	 * Defaults to false (cloud assumption) until /health says otherwise. */
+	isLite = false;
 	/** Increments each time the client is reinitialized; used to discard stale async results. */
 	private clientGeneration = 0;
 	/** Tail of pending saveData() calls; new writes chain off it so we never
@@ -313,11 +318,34 @@ export default class SmartMemoryPlugin extends Plugin {
 			this.statusBar?.setStatus('connected');
 			this.statusBar?.setCount(result.total || 0);
 			this.statusBar?.setLastSync(new Date());
+			// DIST-OBSIDIAN-LITE-1: probe /health to learn whether we're talking
+			// to a lite daemon or the hosted service. Failure defaults to cloud
+			// assumption — never block the connection on the capability probe.
+			void this.refreshLiteMode();
 			return true;
 		} catch (err) {
 			if (generation !== this.clientGeneration) return false;
 			this.statusBar?.setStatus('disconnected');
 			return false;
+		}
+	}
+
+	/** DIST-OBSIDIAN-LITE-1: probe /health and update isLite. */
+	private async refreshLiteMode(): Promise<void> {
+		const generation = this.clientGeneration;
+		try {
+			const { probeHealth } = await import('./services/health');
+			const result = await probeHealth(this.settings.apiUrl);
+			// Discard if settings changed during the await
+			if (generation !== this.clientGeneration) return;
+			// Only update isLite when the probe actually landed. A transient
+			// network failure on a known-lite daemon must not flip UI back to
+			// cloud (would briefly surface API-key field, billing modal, etc.).
+			if (result.probed) {
+				this.isLite = result.isLite;
+			}
+		} catch {
+			// Health module shouldn't throw, but if it does, preserve last-known.
 		}
 	}
 

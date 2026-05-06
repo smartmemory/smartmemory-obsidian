@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting, Notice } from 'obsidian';
 import type SmartMemoryPlugin from './main';
+import { LITE_DAEMON_URL } from './types';
 
 const TEXT_DEBOUNCE_MS = 500;
 
@@ -64,31 +65,72 @@ export class SmartMemorySettingTab extends PluginSettingTab {
 		// Auth
 		containerEl.createEl('h3', { text: 'Connection' });
 
+		// DIST-OBSIDIAN-LITE-1: Cloud / Lite mode radio
 		new Setting(containerEl)
-			.setName('API URL')
-			.setDesc('SmartMemory service endpoint')
-			.addText(text => text
-				.setPlaceholder('https://api.smartmemory.ai')
-				.setValue(this.plugin.settings.apiUrl)
+			.setName('Mode')
+			.setDesc('Cloud uses api.smartmemory.ai (requires API key). Local runs against the smartmemory daemon on this machine (no key needed).')
+			.addDropdown(dd => dd
+				.addOption('cloud', 'Cloud')
+				.addOption('lite', 'Local (lite)')
+				.setValue(this.plugin.settings.mode)
 				.onChange((value) => {
-					this.plugin.settings.apiUrl = value || 'https://api.smartmemory.ai';
-					this.debouncedSave();
+					const newMode = (value === 'lite' ? 'lite' : 'cloud') as 'cloud' | 'lite';
+					const switching = this.plugin.settings.mode !== newMode;
+					this.plugin.settings.mode = newMode;
+					if (switching) {
+						// Sensible defaults when toggling: lite → daemon URL,
+						// cloud → hosted URL. Only overwrite if the user is on
+						// the *other* mode's default (so a custom URL survives).
+						if (newMode === 'lite' && this.plugin.settings.apiUrl === 'https://api.smartmemory.ai') {
+							this.plugin.settings.apiUrl = LITE_DAEMON_URL;
+						} else if (newMode === 'cloud' && this.plugin.settings.apiUrl === LITE_DAEMON_URL) {
+							this.plugin.settings.apiUrl = 'https://api.smartmemory.ai';
+						}
+					}
+					// Save synchronously so initClient() runs against the new mode
+					// before the user can interact with the re-rendered tab. Using
+					// debouncedSave here would orphan the timer when display()
+					// rebuilds the dropdown, causing a double-save.
+					void this.plugin.saveSettings();
+					this.display();  // re-render so API key field hides/shows
 				}));
 
 		new Setting(containerEl)
-			.setName('API key')
-			.setDesc('Generate from your SmartMemory web UI. Or set SMARTMEMORY_API_KEY env var.')
-			.addText(text => {
-				text.setPlaceholder('sm_...')
-					.setValue(this.plugin.settings.apiKey)
-					.onChange((value) => {
-						this.plugin.settings.apiKey = value;
-						this.debouncedSave();
-					});
-				// Mask the secret while editing
-				text.inputEl.type = 'password';
-				text.inputEl.autocomplete = 'off';
+			.setName('API URL')
+			.setDesc(this.plugin.settings.mode === 'lite'
+				? 'Local daemon endpoint. Default is http://127.0.0.1:9014.'
+				: 'SmartMemory service endpoint')
+			.addText(text => text
+				.setPlaceholder(this.plugin.settings.mode === 'lite' ? LITE_DAEMON_URL : 'https://api.smartmemory.ai')
+				.setValue(this.plugin.settings.apiUrl)
+				.onChange((value) => {
+					this.plugin.settings.apiUrl = value || (this.plugin.settings.mode === 'lite' ? LITE_DAEMON_URL : 'https://api.smartmemory.ai');
+					this.debouncedSave();
+				}));
+
+		// API key field is hidden in lite mode — daemon has no auth, key is meaningless.
+		if (this.plugin.settings.mode !== 'lite') {
+			new Setting(containerEl)
+				.setName('API key')
+				.setDesc('Generate from your SmartMemory web UI. Or set SMARTMEMORY_API_KEY env var.')
+				.addText(text => {
+					text.setPlaceholder('sm_...')
+						.setValue(this.plugin.settings.apiKey)
+						.onChange((value) => {
+							this.plugin.settings.apiKey = value;
+							this.debouncedSave();
+						});
+					// Mask the secret while editing
+					text.inputEl.type = 'password';
+					text.inputEl.autocomplete = 'off';
+				});
+		} else {
+			const liteHelp = containerEl.createDiv({ cls: 'setting-item' });
+			liteHelp.createEl('div', {
+				cls: 'setting-item-info',
+				text: 'Local mode runs against smartmemory daemon on this machine — no API key required.',
 			});
+		}
 
 		new Setting(containerEl)
 			.setName('Test connection')

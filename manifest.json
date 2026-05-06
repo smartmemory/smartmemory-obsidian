@@ -1,9 +1,9 @@
 {
 	"id": "smartmemory",
 	"name": "SmartMemory",
-	"version": "0.1.13",
+	"version": "0.1.14",
 	"minAppVersion": "1.5.0",
-	"description": "AI-powered memory system for your vault — entity extraction, graph reasoning, multi-hop search, and contradiction detection.",
+	"description": "AI memory for your vault — entity extraction, knowledge graph, multi-hop search, and contradiction detection. Requires a SmartMemory account (free tier available).",
 	"author": "SmartMemory",
 	"authorUrl": "https://smartmemory.ai",
 	"isDesktopOnly": false

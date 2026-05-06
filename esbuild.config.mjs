@@ -1,9 +1,17 @@
 import esbuild from 'esbuild';
 import process from 'process';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { resolve } from 'path';
 import postcss from 'postcss';
 import tailwindcss from 'tailwindcss';
 import autoprefixer from 'autoprefixer';
+
+// Force a single React/ReactDOM instance across the bundle.
+// @smartmemory/graph is a file: dep with its own node_modules/react,
+// which esbuild would otherwise treat as a separate React. Two React
+// instances → duplicate dispatcher → "useState of null" at runtime.
+const reactDir = resolve('./node_modules/react');
+const reactDomDir = resolve('./node_modules/react-dom');
 
 const prod = process.argv[2] === 'production';
 
@@ -49,6 +57,12 @@ const context = await esbuild.context({
 	minify: prod,
 	loader: { '.jsx': 'jsx' },
 	jsx: 'automatic',
+	alias: {
+		'react': reactDir,
+		'react-dom': reactDomDir,
+		'react-dom/client': reactDomDir + '/client.js',
+		'react/jsx-runtime': reactDir + '/jsx-runtime.js',
+	},
 	define: {
 		__SMARTMEMORY_VERSION__: JSON.stringify(manifest.version),
 		'process.env.NODE_ENV': JSON.stringify(prod ? 'production' : 'development'),

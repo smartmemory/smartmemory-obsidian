@@ -90,6 +90,13 @@ export class GraphView extends ItemView {
 			createElement(GraphExplorer, {
 				adapter,
 				onNodeOpen: (node: any) => this.openVaultFileForNode(node),
+				// Hide the selection toolbar (Move / Isolate / Delete) inside
+				// Obsidian. The Delete action mutates SmartMemory across all
+				// surfaces, which is the wrong destructive default for a
+				// reader-first PKM context — users editing memories should
+				// do so explicitly via plugin commands, not via a graph
+				// click. Web and Studio still get the toolbar by default.
+				hideSelectionToolbar: true,
 				// Surface plugin-relevant streaming when SSE is wired in a
 				// later iteration. For now the component falls back to plain
 				// HTTP fetch via the adapter.

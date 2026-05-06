@@ -2,6 +2,23 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.1.12] — 2026-04-30 — DIST-OBSIDIAN-1 Phase 7 close-out
+
+### Fixed
+- **Quota-error mapping aligned to actual server contract.** Server returns `429` (not `403`) with `detail: "Memory quota exceeded"` and `detail: "Daily query quota exceeded"` for the two cases. The previous handler matched only `status === 403` for memory quota — meaning a free-tier user hitting the ingest cap would have seen "daily limit reached" notice instead of the upgrade modal, silently breaking the distribution funnel. Disambiguates via `detail` string.
+- **Re-ingest path no longer duplicates remote items on transient errors.** The existence-check on the unchanged-content path treated any `get()` failure as a 404, deleted the local mapping, and re-ingested — creating duplicate remote items on flaky networks. Now distinguishes 404 (re-ingest) from other statuses (re-throw).
+- **Enrichment polling completes for notes with zero extracted entities.** `Array.isArray(entities)` is the terminal signal, not `entities.length > 0`. Notes that legitimately extract zero entities now write back memory_type and sync timestamp instead of timing out.
+- **Cleared search query no longer repopulates with stale results.** `requestSeq` advances on the empty-query branch so any in-flight search resolves into the no-op path.
+- **Mapping store rename/delete cleans up `entityToFile`.** Renaming or deleting a note used to leave stale entity → file pointers, causing auto-link to propose links to nonexistent or wrong files. Both rename and delete now re-point/prune the entity map.
+- **Re-enrichment with shrunken entity sets prunes stale auto-link targets.** New `replaceEntitiesForFile()` operation atomically replaces all entities owned by a file. Without it, an entity that disappears from the extraction would linger forever as an auto-link target.
+- **Contradiction banner now direction-aware.** The decision system writes only one canonical edge (`newer -[SUPERSEDES]-> older`); without direction info, opening a *superseded* note showed "This note supersedes another" — exactly inverted. Plugin now reads the new `direction` field on `/neighbors` responses and refuses to render rather than guess if the field is missing.
+
+### Changed
+- `Settings → Exclude folders` description now says "path prefixes" (matching the actual prefix-based matcher) instead of misleadingly claiming glob support.
+
+### Added
+- 21 new tests pinning the above fixes: `quota-errors.test.ts` (6), `regressions.test.ts` (7), 8 rewritten contradiction tests covering canonical / forward-compat / missing-direction guard. Total: **108 tests passing**, 10 test files.
+
 ## [0.1.7] — 2026-04-30
 
 ### Fixed

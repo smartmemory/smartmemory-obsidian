@@ -9,13 +9,20 @@ import colors from '../graph-colors.json';
 // required. We previously used `cose-bilkent` but its registration via
 // `cytoscape.use()` was unreliable under Obsidian's bundled Electron renderer,
 // causing silent fallback to the default grid layout.
+//
+// `padding` here is the gutter the layout reserves around the bounding box
+// during fit. We pair it with an explicit `cy.zoom(zoom * ZOOM_OUT_FACTOR)`
+// after layoutstop to match Obsidian's native graph view's default
+// breathing-room zoom level — cose's auto-fit alone is too tight.
+const ZOOM_OUT_FACTOR = 0.7;
+
 const FORCE_LAYOUT = {
 	name: 'cose',
 	animate: false,
 	idealEdgeLength: 120,
 	nodeOverlap: 12,
-	padding: 24,
-	componentSpacing: 80,
+	padding: 80,
+	componentSpacing: 100,
 	nodeRepulsion: 8000,
 	edgeElasticity: 100,
 	nestingFactor: 5,
@@ -161,7 +168,15 @@ export class GraphView extends ItemView {
 			'[smartmemory-graph] rendered',
 			{ nodes: cyNodes.length, edges: cyEdges.length },
 		);
-		this.cy.layout(FORCE_LAYOUT).run();
+		const layout = this.cy.layout(FORCE_LAYOUT);
+		// Step the zoom out after layout settles so we land at Obsidian's
+		// graph-view-style breathing room rather than cose's tight auto-fit.
+		layout.one('layoutstop', () => {
+			if (!this.cy) return;
+			this.cy.zoom(this.cy.zoom() * ZOOM_OUT_FACTOR);
+			this.cy.center();
+		});
+		layout.run();
 	}
 
 	private async onNodeTap(itemId: string): Promise<void> {

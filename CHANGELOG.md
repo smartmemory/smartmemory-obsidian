@@ -2,7 +2,7 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.1.7] — 2026-04-30
 
 ### Fixed
 - **Graph pane renders edges again.** Two bugs were silently collapsing the layout into a row/grid arrangement:

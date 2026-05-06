@@ -59,9 +59,35 @@ export class GraphCache {
 			throw new Error('GraphAPI.getFullGraph not available in SDK');
 		}
 		const result = await fn.call(api);
-		return {
-			nodes: Array.isArray(result?.nodes) ? result.nodes : [],
-			edges: Array.isArray(result?.edges) ? result.edges : [],
-		};
+
+		// Normalize server-side field names (item_id / source_id / target_id /
+		// edge_type) to the plugin's internal model (id / source / target /
+		// type). Doing this at the API boundary keeps graph-bfs and graph-view
+		// free of server-shape concerns. Without this normalization edges'
+		// source/target are undefined → BFS produces no adjacency → focus
+		// lookup misses → caller falls back to the no-focus branch which drops
+		// all edges → graph renders with zero edges and the force layout
+		// degenerates into a row/grid arrangement.
+		const rawNodes: any[] = Array.isArray(result?.nodes) ? result.nodes : [];
+		const rawEdges: any[] = Array.isArray(result?.edges) ? result.edges : [];
+
+		const nodes = rawNodes
+			.map((n) => {
+				const id = n?.id ?? n?.item_id;
+				if (!id) return null;
+				return { ...n, id };
+			})
+			.filter((n): n is any => n !== null);
+
+		const edges = rawEdges
+			.map((e) => {
+				const source = e?.source ?? e?.source_id;
+				const target = e?.target ?? e?.target_id;
+				if (!source || !target) return null;
+				return { ...e, source, target, type: e?.type ?? e?.edge_type };
+			})
+			.filter((e): e is any => e !== null);
+
+		return { nodes, edges };
 	}
 }

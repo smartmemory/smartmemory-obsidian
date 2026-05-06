@@ -41,8 +41,11 @@ export const DEFAULT_SETTINGS: SmartMemorySettings = {
 	apiUrl: 'https://api.smartmemory.ai',
 	workspaceId: '',
 
-	autoIngestOnSave: false,
-	autoIngestOnCreate: false,
+	// Seamless by default: edited and new notes flow into SmartMemory without
+	// requiring a command. Users can disable in settings if they prefer
+	// command-driven ingest.
+	autoIngestOnSave: true,
+	autoIngestOnCreate: true,
 	ingestDebounceMs: 5000,
 	includeFolders: ['**/*'],
 	excludeFolders: ['templates/', '.obsidian/'],

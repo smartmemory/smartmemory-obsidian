@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import type SmartMemoryPlugin from '../main';
 import { readSmartMemoryId } from '../bridge/frontmatter';
+import { RECALL_EXCLUDE_ORIGIN_PREFIXES } from '../services/search';
 
 export const ENTITY_VIEW_TYPE = 'smartmemory-entities';
 
@@ -67,7 +68,30 @@ export class EntityView extends ItemView {
 			// Discard if a newer refresh has started during the await
 			if (seq !== this.refreshSeq) return;
 
-			const entities: Array<{ name: string; type?: string }> = item?.entities || [];
+			let entities: Array<{ name: string; type?: string; entityId?: string }> = (item?.entities || [])
+				.map((e: any) => ({ name: e?.name, type: e?.type, entityId: e?.item_id }));
+
+			// `item.entities` is only populated transiently in the immediate
+			// post-ingest GET response. After the graph is rebuilt, entities
+			// live as separate nodes connected via MENTIONS/MENTIONED_IN edges
+			// and `item.entities` returns null. Fall back to /neighbors so the
+			// sidebar keeps working past the post-ingest window.
+			if (entities.length === 0) {
+				const neighborsResp: any = await (client.memories as any).getNeighbors(itemId);
+				if (seq !== this.refreshSeq) return;
+				const neighbors: any[] = neighborsResp?.neighbors || [];
+				entities = neighbors
+					.filter(n => {
+						const lt = String(n?.link_type || '').toUpperCase();
+						return lt === 'MENTIONS' || lt === 'MENTIONED_IN';
+					})
+					.map(n => ({
+						name: typeof n.content === 'string' ? n.content : String(n.item_id ?? ''),
+						type: n.memory_type,
+						entityId: n.item_id,
+					}))
+					.filter(e => e.name);
+			}
 
 			if (entities.length === 0) {
 				root.createDiv({
@@ -85,7 +109,7 @@ export class EntityView extends ItemView {
 				if (entity.type) {
 					chip.createSpan({ cls: 'smartmemory-entity-type', text: entity.type });
 				}
-				chip.addEventListener('click', () => this.showCrossNoteResults(entity.name, root));
+				chip.addEventListener('click', () => this.showCrossNoteResults(entity, itemId, root));
 			}
 		} catch (err) {
 			if (seq !== this.refreshSeq) return;
@@ -96,49 +120,99 @@ export class EntityView extends ItemView {
 		}
 	}
 
-	private async showCrossNoteResults(entityName: string, root: HTMLElement): Promise<void> {
+	private async showCrossNoteResults(
+		entity: { name: string; entityId?: string },
+		currentNoteItemId: string,
+		root: HTMLElement,
+	): Promise<void> {
 		// Remove any previous cross-note results section
 		root.querySelectorAll('.smartmemory-entity-cross-results').forEach(el => el.remove());
 
 		const section = root.createDiv({ cls: 'smartmemory-entity-cross-results' });
-		section.createEl('h4', { text: `Notes mentioning "${entityName}"` });
+		section.createEl('h4', { text: `Notes mentioning "${entity.name}"` });
 
-		const search = this.plugin.searchService;
-		if (!search) {
+		const client = this.plugin.client;
+		if (!client) {
 			section.createDiv({ text: 'Not connected.' });
 			return;
 		}
 
-		try {
-			const results = await search.search({
-				query: entityName,
-				topK: 10,
-				entity: entityName,
-			});
-
-			if (results.length === 0) {
+		// Graph-traversal path: ask the entity node "who mentions you?" via
+		// /memory/{entity_id}/neighbors. This is the precise answer that lives
+		// in the graph, not an approximate vector-search match. Falls back to
+		// keyword search only if the entity item_id is unknown (legacy item
+		// shape from older servers).
+		const renderRows = (rows: Array<{ itemId: string; label: string }>) => {
+			if (rows.length === 0) {
 				section.createDiv({ text: 'No other notes mention this entity.' });
 				return;
 			}
-
-			for (const result of results) {
+			for (const r of rows) {
 				const row = section.createDiv({ cls: 'smartmemory-entity-cross-result' });
-				const filePath = this.plugin.mappingStore.getFilePath(result.itemId);
-				const label = filePath || result.snippet.slice(0, 60);
-				const link = row.createEl('a', { text: label });
+				const link = row.createEl('a', { text: r.label });
 				link.addEventListener('click', async () => {
+					const filePath = this.plugin.mappingStore.getFilePath(r.itemId);
 					if (filePath) {
 						const file = this.plugin.app.vault.getAbstractFileByPath(filePath);
 						if (file instanceof TFile) {
 							await this.plugin.app.workspace.getLeaf().openFile(file);
+							return;
 						}
-					} else {
-						new Notice('SmartMemory: this memory has no vault note.');
 					}
+					new Notice('SmartMemory: this memory has no vault note.');
 				});
 			}
+		};
+
+		try {
+			if (entity.entityId) {
+				const resp: any = await (client.memories as any).getNeighbors(entity.entityId);
+				const neighbors: any[] = resp?.neighbors || [];
+				const rows = neighbors
+					.filter(n => {
+						const lt = String(n?.link_type || '').toUpperCase();
+						// Only edges that actually mean "X mentions/is-mentioned-in this entity".
+						// Exclude infra edges; entity-to-entity edges (different
+						// entity nodes) get filtered out below by item_id.
+						return lt === 'MENTIONS' || lt === 'MENTIONED_IN';
+					})
+					.filter(n => n?.item_id && n.item_id !== currentNoteItemId)
+					.map(n => {
+						const filePath = this.plugin.mappingStore.getFilePath(n.item_id);
+						const fallbackLabel =
+							typeof n.content === 'string' && n.content.trim().length > 0
+								? n.content.trim().slice(0, 60)
+								: n.item_id;
+						return { itemId: n.item_id, label: filePath || fallbackLabel };
+					});
+				renderRows(rows);
+				return;
+			}
+
+			// Fallback: no entity item_id available. Search by keyword and
+			// post-filter against the entity name, but warn — this is the
+			// imprecise path.
+			const search = this.plugin.searchService;
+			if (!search) {
+				section.createDiv({ text: 'Not connected.' });
+				return;
+			}
+			const results = await search.search({
+				query: entity.name,
+				topK: 10,
+				excludeOriginPrefixes: RECALL_EXCLUDE_ORIGIN_PREFIXES,
+			});
+			const re = new RegExp(`\\b${entity.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+			const rows = results
+				.filter(r => r.itemId !== currentNoteItemId)
+				.filter(r => re.test(r.content || ''))
+				.map(r => {
+					const filePath = this.plugin.mappingStore.getFilePath(r.itemId);
+					return { itemId: r.itemId, label: filePath || r.snippet.slice(0, 60) };
+				});
+			renderRows(rows);
 		} catch (err) {
-			section.createDiv({ text: `Search failed: ${err instanceof Error ? err.message : String(err)}` });
+			section.createDiv({ text: `Lookup failed: ${err instanceof Error ? err.message : String(err)}` });
 		}
 	}
 }

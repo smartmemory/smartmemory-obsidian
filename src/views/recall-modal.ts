@@ -1,6 +1,7 @@
 import { App, Modal, MarkdownView, Notice, TFile } from 'obsidian';
 import type SmartMemoryPlugin from '../main';
 import type { SearchResult } from '../services/search';
+import { RECALL_EXCLUDE_ORIGIN_PREFIXES } from '../services/search';
 import { toWikilinkTarget } from '../util/wikilink-path';
 
 export class RecallModal extends Modal {
@@ -37,6 +38,8 @@ export class RecallModal extends Modal {
 				query: this.query,
 				topK: 5,
 				multiHop: true,
+				excludeOriginPrefixes: RECALL_EXCLUDE_ORIGIN_PREFIXES,
+				dedupeContent: true,
 			});
 			this.renderResults(resultsEl, results);
 		} catch (err) {
@@ -60,6 +63,7 @@ export class RecallModal extends Modal {
 			const row = container.createDiv({ cls: 'smartmemory-recall-result' });
 
 			const main = row.createDiv({ cls: 'smartmemory-recall-result-main' });
+			main.createDiv({ cls: 'smartmemory-recall-result-title', text: result.title });
 			const meta = main.createDiv({ cls: 'smartmemory-recall-result-meta' });
 			meta.createSpan({ cls: 'smartmemory-search-type', text: result.memoryType });
 			if (result.score !== null) {
@@ -68,6 +72,13 @@ export class RecallModal extends Modal {
 					text: result.score.toFixed(2),
 				});
 			}
+			// Short item_id suffix lets the user tell apart two results with
+			// identical titles/snippets (real server returns distinct memories
+			// that may surface as visual dupes).
+			meta.createSpan({
+				cls: 'smartmemory-search-id',
+				text: `#${result.itemId.slice(-6)}`,
+			});
 			main.createDiv({ cls: 'smartmemory-search-snippet', text: result.snippet });
 
 			const actions = row.createDiv({ cls: 'smartmemory-recall-result-actions' });
@@ -85,29 +96,63 @@ export class RecallModal extends Modal {
 		}
 	}
 
-	private insertLink(result: SearchResult): void {
+	/**
+	 * Resolve a SearchResult to a wikilink target. If the memory was ingested
+	 * from this vault, link to the actual file. Otherwise fall back to the
+	 * memory's title — Obsidian renders that as an unresolved link the user
+	 * can later create. Either way, "Insert link" never silently fails.
+	 */
+	private wikilinkTarget(result: SearchResult): string {
 		const filePath = this.plugin.mappingStore.getFilePath(result.itemId);
+		if (filePath) return toWikilinkTarget(filePath);
+		return (result.title || 'untitled').replace(/[\[\]|]/g, '');
+	}
+
+	private insertLink(result: SearchResult): void {
 		const view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) {
-			new Notice('SmartMemory: no active editor');
+			new Notice('SmartMemory: open a note first to insert links');
 			return;
 		}
-		if (!filePath) {
-			new Notice('SmartMemory: this memory has no vault note to link to');
-			return;
-		}
-		view.editor.replaceSelection(`[[${toWikilinkTarget(filePath)}]]`);
+		view.editor.replaceSelection(`[[${this.wikilinkTarget(result)}]]`);
 	}
 
 	private async openResult(result: SearchResult): Promise<void> {
 		const filePath = this.plugin.mappingStore.getFilePath(result.itemId);
-		if (!filePath) {
-			new Notice('SmartMemory: this memory has no vault note');
-			return;
+		if (filePath) {
+			const file = this.app.vault.getAbstractFileByPath(filePath);
+			if (file instanceof TFile) {
+				await this.app.workspace.getLeaf().openFile(file);
+				return;
+			}
 		}
-		const file = this.app.vault.getAbstractFileByPath(filePath);
-		if (file instanceof TFile) {
+		// No vault file mapped — create one from the memory's content so the
+		// user can keep working with it inside Obsidian.
+		await this.createNoteFromResult(result);
+	}
+
+	private async createNoteFromResult(result: SearchResult): Promise<void> {
+		const safeTitle = (result.title || 'Recalled memory').replace(/[\\/:*?"<>|]/g, '-');
+		const basePath = `SmartMemory Imports/${safeTitle}.md`;
+		// Avoid clobbering an existing file: append a counter if needed.
+		let path = basePath;
+		let i = 2;
+		while (this.app.vault.getAbstractFileByPath(path)) {
+			path = `SmartMemory Imports/${safeTitle} (${i}).md`;
+			i++;
+		}
+		try {
+			const folder = 'SmartMemory Imports';
+			if (!this.app.vault.getAbstractFileByPath(folder)) {
+				await this.app.vault.createFolder(folder);
+			}
+			const file = await this.app.vault.create(path, result.content);
+			this.plugin.mappingStore.set(file.path, result.itemId);
 			await this.app.workspace.getLeaf().openFile(file);
+		} catch (err) {
+			new Notice(
+				`SmartMemory: could not create note: ${err instanceof Error ? err.message : String(err)}`,
+			);
 		}
 	}
 }

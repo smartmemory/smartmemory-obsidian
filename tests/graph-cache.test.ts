@@ -60,6 +60,65 @@ describe('GraphCache', () => {
 		expect(result.nodes[0].id).toBe('fresh');
 	});
 
+	describe('server contract normalization (DIST-OBSIDIAN-1 graph regression)', () => {
+		it('maps server item_id → id on nodes', async () => {
+			const fn = vi.fn().mockResolvedValue({
+				nodes: [
+					{ item_id: 'mem-1', label: 'Note A', memory_type: 'semantic' },
+					{ item_id: 'mem-2', label: 'Note B', memory_type: 'episodic' },
+				],
+				edges: [],
+			});
+			const cache = new GraphCache(makeClient(fn));
+			const result = await cache.get();
+			expect(result.nodes.map(n => n.id)).toEqual(['mem-1', 'mem-2']);
+		});
+
+		it('maps server source_id/target_id → source/target on edges', async () => {
+			const fn = vi.fn().mockResolvedValue({
+				nodes: [
+					{ item_id: 'a' },
+					{ item_id: 'b' },
+				],
+				edges: [
+					{ source_id: 'a', target_id: 'b', edge_type: 'PART_OF' },
+				],
+			});
+			const cache = new GraphCache(makeClient(fn));
+			const result = await cache.get();
+			expect(result.edges).toHaveLength(1);
+			expect(result.edges[0].source).toBe('a');
+			expect(result.edges[0].target).toBe('b');
+			expect(result.edges[0].type).toBe('PART_OF');
+		});
+
+		it('drops edges that lack endpoints (defensive)', async () => {
+			const fn = vi.fn().mockResolvedValue({
+				nodes: [{ item_id: 'a' }],
+				edges: [
+					{ source_id: 'a', target_id: null },  // dropped
+					{ source_id: undefined, target_id: 'a' },  // dropped
+					{ source_id: 'a', target_id: 'a' },  // kept (self-edge)
+				],
+			});
+			const cache = new GraphCache(makeClient(fn));
+			const result = await cache.get();
+			expect(result.edges).toHaveLength(1);
+		});
+
+		it('still accepts already-normalized payloads (forward-compat)', async () => {
+			const fn = vi.fn().mockResolvedValue({
+				nodes: [{ id: 'a', label: 'A' }],
+				edges: [{ source: 'a', target: 'a', type: 'X' }],
+			});
+			const cache = new GraphCache(makeClient(fn));
+			const result = await cache.get();
+			expect(result.nodes[0].id).toBe('a');
+			expect(result.edges[0].source).toBe('a');
+			expect(result.edges[0].type).toBe('X');
+		});
+	});
+
 	it('invalidate clears cache', async () => {
 		const fn = vi.fn().mockResolvedValue({ nodes: [], edges: [] });
 		const cache = new GraphCache(makeClient(fn));

@@ -525,3 +525,18 @@
 	justify-content: flex-end;
 	margin-top: 1em;
 }
+
+/* === Search result origin badge === */
+.smartmemory-search-origin {
+	font-size: 0.75em;
+	padding: 0.1em 0.4em;
+	border-radius: 3px;
+	background-color: var(--background-secondary);
+	color: var(--text-muted);
+	margin-left: 0.4em;
+}
+.smartmemory-search-origin-unknown {
+	background-color: var(--background-modifier-error-rgb, rgba(225, 75, 75, 0.15));
+	color: var(--text-error, #e25c5c);
+	border: 1px dashed var(--text-error, #e25c5c);
+}

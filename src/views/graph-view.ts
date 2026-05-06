@@ -1,16 +1,28 @@
 import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import cytoscape from 'cytoscape';
-// @ts-ignore — no types available for cose-bilkent
-import coseBilkent from 'cytoscape-cose-bilkent';
 import type SmartMemoryPlugin from '../main';
 import { extractNeighborhood, isStructuralEdge } from '../services/graph-bfs';
 import { readSmartMemoryId } from '../bridge/frontmatter';
 import colors from '../graph-colors.json';
 
-if (typeof (cytoscape as any).__bilkentRegistered === 'undefined') {
-	cytoscape.use(coseBilkent);
-	(cytoscape as any).__bilkentRegistered = true;
-}
+// Built-in `cose` layout ships with cytoscape core — no extension registration
+// required. We previously used `cose-bilkent` but its registration via
+// `cytoscape.use()` was unreliable under Obsidian's bundled Electron renderer,
+// causing silent fallback to the default grid layout.
+const FORCE_LAYOUT = {
+	name: 'cose',
+	animate: false,
+	idealEdgeLength: 120,
+	nodeOverlap: 12,
+	padding: 24,
+	componentSpacing: 80,
+	nodeRepulsion: 8000,
+	edgeElasticity: 100,
+	nestingFactor: 5,
+	gravity: 80,
+	numIter: 1000,
+	fit: true,
+} as any;
 
 export const GRAPH_VIEW_TYPE = 'smartmemory-graph';
 
@@ -31,12 +43,15 @@ export class GraphView extends ItemView {
 	getIcon(): string { return 'git-branch'; }
 
 	async onOpen(): Promise<void> {
+		console.log('[smartmemory-graph] onOpen FIRED');
+		new Notice('SmartMemory graph: onOpen fired (build B)');
+
 		this.rootEl = this.containerEl.children[1] as HTMLElement;
 		this.rootEl.empty();
 		this.rootEl.addClass('smartmemory-graph-view');
 
 		const toolbar = this.rootEl.createDiv({ cls: 'smartmemory-graph-toolbar' });
-		toolbar.createSpan({ cls: 'smartmemory-graph-title', text: 'SmartMemory graph' });
+		toolbar.createSpan({ cls: 'smartmemory-graph-title', text: 'SmartMemory graph (build B)' });
 		const refreshBtn = toolbar.createEl('button', { text: 'Refresh' });
 		refreshBtn.addEventListener('click', () => void this.refresh(true));
 
@@ -48,7 +63,7 @@ export class GraphView extends ItemView {
 		this.cy = cytoscape({
 			container: cyEl,
 			style: this.cytoscapeStyle(),
-			layout: { name: 'cose-bilkent', animate: false } as any,
+			layout: FORCE_LAYOUT,
 		});
 
 		this.cy.on('tap', 'node', (evt) => {
@@ -60,9 +75,11 @@ export class GraphView extends ItemView {
 	}
 
 	async refresh(force = false): Promise<void> {
+		console.log('[smartmemory-graph] refresh CALLED', { force });
 		const seq = ++this.refreshSeq;
 		const graphCache = this.plugin.graphCache;
 		if (!graphCache) {
+			console.log('[smartmemory-graph] refresh ABORTED — no graphCache (client not configured?)');
 			this.showMessage('Not connected.');
 			return;
 		}
@@ -78,12 +95,30 @@ export class GraphView extends ItemView {
 			// rapid leaf-changes from rendering stale neighborhoods.
 			if (seq !== this.refreshSeq) return;
 
-			const subgraph = focusId
-				? extractNeighborhood(fullGraph, focusId, {
-						hops: this.plugin.settings.graphDefaultHops,
-						maxNodes: this.plugin.settings.graphMaxNodes,
-					})
-				: { nodes: fullGraph.nodes.slice(0, this.plugin.settings.graphMaxNodes), edges: [] };
+			console.log(
+				'[smartmemory-graph] full-graph response',
+				{ nodes: fullGraph.nodes?.length ?? 0, edges: fullGraph.edges?.length ?? 0, focusId },
+			);
+
+			let subgraph: typeof fullGraph;
+			if (focusId) {
+				subgraph = extractNeighborhood(fullGraph, focusId, {
+					hops: this.plugin.settings.graphDefaultHops,
+					maxNodes: this.plugin.settings.graphMaxNodes,
+				});
+			} else {
+				// No focus node — show a slice of the full graph and keep
+				// every edge whose endpoints survived the slice. Previous
+				// implementation hardcoded `edges: []`, which collapsed the
+				// layout into a row/grid because cose has no springs to relax
+				// against.
+				const slicedNodes = fullGraph.nodes.slice(0, this.plugin.settings.graphMaxNodes);
+				const includedIds = new Set(slicedNodes.map(n => n.id));
+				const slicedEdges = fullGraph.edges.filter(
+					e => includedIds.has(e.source) && includedIds.has(e.target),
+				);
+				subgraph = { nodes: slicedNodes, edges: slicedEdges };
+			}
 
 			this.currentFocusId = focusId;
 			this.renderGraph(subgraph.nodes, subgraph.edges, focusId);
@@ -122,7 +157,11 @@ export class GraphView extends ItemView {
 		}));
 
 		this.cy.add([...cyNodes, ...cyEdges]);
-		this.cy.layout({ name: 'cose-bilkent', animate: false } as any).run();
+		console.log(
+			'[smartmemory-graph] rendered',
+			{ nodes: cyNodes.length, edges: cyEdges.length },
+		);
+		this.cy.layout(FORCE_LAYOUT).run();
 	}
 
 	private async onNodeTap(itemId: string): Promise<void> {
@@ -143,7 +182,7 @@ export class GraphView extends ItemView {
 		this.rootEl.createDiv({ cls: 'smartmemory-graph-message', text: msg });
 	}
 
-	private cytoscapeStyle(): cytoscape.StylesheetCSS[] {
+	private cytoscapeStyle(): cytoscape.Stylesheet[] {
 		return [
 			{
 				selector: 'node',
@@ -152,40 +191,45 @@ export class GraphView extends ItemView {
 					'label': 'data(label)',
 					'text-valign': 'bottom',
 					'text-halign': 'center',
-					'font-size': '10px',
-					'color': 'var(--text-normal)',
-					'width': 30,
-					'height': 30,
+					'text-margin-y': 4,
+					'font-size': 10,
+					'text-wrap': 'ellipsis',
+					'text-max-width': 120,
+					'color': '#d4d4d4',
+					'width': 14,
+					'height': 14,
 				},
 			},
 			{
 				selector: 'node[?isFocus]',
 				style: {
-					'border-width': 3,
-					'border-color': 'var(--interactive-accent)',
-					'width': 40,
-					'height': 40,
+					'border-width': 2,
+					'border-color': '#7c3aed',
+					'width': 22,
+					'height': 22,
 				},
 			},
 			{
 				selector: 'edge',
 				style: {
 					'curve-style': 'bezier',
-					'line-color': 'var(--text-faint)',
-					'target-arrow-color': 'var(--text-faint)',
+					'line-color': '#666',
+					'target-arrow-color': '#666',
 					'target-arrow-shape': 'triangle',
-					'width': 1.5,
+					'arrow-scale': 0.8,
+					'width': 1,
 					'line-style': 'dashed',
+					'opacity': 0.7,
 				},
 			},
 			{
 				selector: 'edge[?structural]',
 				style: {
 					'line-style': 'solid',
-					'width': 2,
+					'width': 1.5,
 				},
 			},
-		] as any;
+		];
 	}
 }
 

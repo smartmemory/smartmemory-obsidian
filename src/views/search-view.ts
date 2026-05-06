@@ -1,6 +1,7 @@
 import { ItemView, WorkspaceLeaf, Notice, TFile } from 'obsidian';
 import type SmartMemoryPlugin from '../main';
 import type { SearchResult } from '../services/search';
+import { RECALL_EXCLUDE_ORIGIN_PREFIXES } from '../services/search';
 import { handleQuotaError } from '../util/quota-errors';
 
 export const SEARCH_VIEW_TYPE = 'smartmemory-search';
@@ -50,14 +51,22 @@ export class SearchView extends ItemView {
 
 		this.originEl = filtersEl.createEl('input', {
 			type: 'text',
-			placeholder: 'Origin prefix (e.g. import:)',
+			placeholder: 'Origin prefix (clear to see derived/evolved)',
 			cls: 'smartmemory-search-filter',
 		});
+		// Default to vault-notes-only. The SmartMemory pipeline graduates
+		// evolved copies of memories under origin prefixes like
+		// `evolver:episodic_to_semantic` and `mcp:memory_add`; both are tier-1
+		// search-visible. Without a default origin filter, every vault note
+		// would show up alongside its evolved twin and the user has no idea
+		// why the same content appears twice. Clearing this input shows
+		// everything.
+		this.originEl.value = 'import:obsidian';
 		this.originEl.addEventListener('input', () => this.onQueryChange());
 
 		this.entityEl = filtersEl.createEl('input', {
 			type: 'text',
-			placeholder: 'Entity name',
+			placeholder: 'Entity (added to query)',
 			cls: 'smartmemory-search-filter',
 		});
 		this.entityEl.addEventListener('input', () => this.onQueryChange());
@@ -77,8 +86,19 @@ export class SearchView extends ItemView {
 	}
 
 	private async runSearch(): Promise<void> {
-		const query = this.inputEl?.value?.trim() ?? '';
-		if (!query) {
+		const queryText = this.inputEl?.value?.trim() ?? '';
+		const entityText = this.entityEl?.value?.trim() ?? '';
+		// The entity field is a query hint, not a post-filter. The server's
+		// /memory/search does not accept an entity parameter, and search
+		// responses do not include populated `entities` arrays for graph-
+		// extracted items, so the previous client-side post-filter never
+		// matched anything. We instead fold the entity term into the query
+		// text — entity-by-itself becomes a valid search, and entity+query
+		// just searches for both terms.
+		const effectiveQuery = [queryText, entityText].filter(Boolean).join(' ').trim();
+
+		if (!effectiveQuery) {
+			++this.requestSeq;
 			this.renderResults([]);
 			return;
 		}
@@ -92,12 +112,17 @@ export class SearchView extends ItemView {
 		const seq = ++this.requestSeq;
 		try {
 			const results = await search.search({
-				query,
+				query: effectiveQuery,
 				topK: 10,
 				multiHop: true,
 				memoryType: this.memoryTypeEl?.value || undefined,
 				originPrefix: this.originEl?.value || undefined,
-				entity: this.entityEl?.value || undefined,
+				// Hide tier 3/4 (speculative + system infra) from user-facing
+				// search by default. The optional originPrefix filter above is
+				// additive — even a user-typed prefix still respects the
+				// exclude list (origin must satisfy both: starts with the
+				// requested prefix AND is not in the exclude set).
+				excludeOriginPrefixes: RECALL_EXCLUDE_ORIGIN_PREFIXES,
 			});
 			// Discard stale results
 			if (seq !== this.requestSeq) return;
@@ -133,7 +158,22 @@ export class SearchView extends ItemView {
 					text: result.score.toFixed(2),
 				});
 			}
+			// Surface origin per result so write-path bugs (e.g. server-side
+			// origin propagation, see CORE-ORIGIN-PROPAGATION-1) are visible
+			// at a glance instead of needing the Insights inspector. Items
+			// tagged "unknown" get a flagged class so users see it stands out.
+			const origin = result.origin || 'unknown';
+			const originEl = header.createSpan({
+				cls: origin === 'unknown'
+					? 'smartmemory-search-origin smartmemory-search-origin-unknown'
+					: 'smartmemory-search-origin',
+				text: origin,
+			});
+			originEl.title = origin === 'unknown'
+				? 'No origin tag — likely a server-side propagation bug. See CORE-ORIGIN-PROPAGATION-1.'
+				: `Origin: ${origin}`;
 
+			card.createDiv({ cls: 'smartmemory-search-title', text: result.title });
 			card.createDiv({ cls: 'smartmemory-search-snippet', text: result.snippet });
 
 			card.addEventListener('click', () => this.onResultClick(result));

@@ -2,7 +2,7 @@ import type { App, TFile } from 'obsidian';
 import type { SmartMemoryClient } from 'smartmemory-sdk-js/core';
 import type { MappingStore } from '../bridge/mapping-store';
 import type { SmartMemorySettings } from '../types';
-import { writeSmartMemoryFrontmatter, readSmartMemoryId } from '../bridge/frontmatter';
+import { writeSmartMemoryFrontmatter, readSmartMemoryId, stripFrontmatter } from '../bridge/frontmatter';
 
 export type IngestEvent =
 	| { type: 'ingest-start'; path: string }
@@ -25,6 +25,11 @@ export interface IngestServiceConfig {
 	/** Max concurrent ingests during folder batch. Default 3. */
 	concurrency?: number;
 	onEvent?: (event: IngestEvent) => void;
+	/** Invoked after each successful mapping mutation so the host plugin can
+	 *  persist `mappingStore.toJSON()` to plugin data. Without this hook,
+	 *  mappings live only in memory and `memory→file` lookups silently fail
+	 *  on the next plugin reload. */
+	onMappingsChanged?: () => void | Promise<void>;
 }
 
 export interface BatchResult {
@@ -61,9 +66,28 @@ export class IngestService {
 	private pollMaxAttempts: number;
 	private concurrency: number;
 	private onEvent?: (event: IngestEvent) => void;
+	private onMappingsChanged?: () => void | Promise<void>;
 	/** When true, file modify events are suppressed (set during folder batch
 	 *  to prevent feedback loops with auto-ingest-on-save). */
 	public batchInProgress = false;
+	/** Per-path self-write suppression. When the plugin writes frontmatter,
+	 *  Obsidian fires a `modify` event for our own write. Without this guard
+	 *  the event handler still burns a debounce timer (and would re-ingest
+	 *  if the body hash differed). The mapping path → expiry-timestamp lets
+	 *  vault-events skip events fired within the suppression window. */
+	private selfWrites = new Map<string, number>();
+	public isSelfWrite(path: string): boolean {
+		const expiry = this.selfWrites.get(path);
+		if (expiry === undefined) return false;
+		if (Date.now() > expiry) {
+			this.selfWrites.delete(path);
+			return false;
+		}
+		return true;
+	}
+	private markSelfWrite(path: string, windowMs = 2000): void {
+		this.selfWrites.set(path, Date.now() + windowMs);
+	}
 
 	constructor(cfg: IngestServiceConfig) {
 		this.client = cfg.client;
@@ -74,62 +98,120 @@ export class IngestService {
 		this.pollMaxAttempts = cfg.pollMaxAttempts ?? 4;
 		this.concurrency = cfg.concurrency ?? 3;
 		this.onEvent = cfg.onEvent;
+		this.onMappingsChanged = cfg.onMappingsChanged;
+	}
+
+	private notifyMappingsChanged(): void {
+		// Fire-and-forget — persistence errors should not break ingest. The
+		// host's `serializedSave` queue already swallows its own write
+		// failures so they don't cascade.
+		void Promise.resolve(this.onMappingsChanged?.()).catch(() => {});
 	}
 
 	async ingestFile(file: TFile, options: IngestFileOptions = {}): Promise<{ itemId: string }> {
 		this.emit({ type: 'ingest-start', path: file.path });
 
 		try {
-			const content = await this.app.vault.read(file);
+			const raw = await this.app.vault.read(file);
+			// Strip our own frontmatter before hashing or sending. This
+			// breaks the auto-ingest feedback loop (writeback → modify →
+			// ingest → writeback) and prevents our metadata fields from
+			// being seen by the entity extractor.
+			const content = stripFrontmatter(raw);
+			if (!content.trim()) {
+				this.emit({ type: 'ingest-error', path: file.path, error: 'empty content' });
+				return { itemId: '' };
+			}
 			const newHash = hashContent(content);
 			const oldHash = this.store.getContentHash(file.path);
 			const existingId = this.store.getMemoryId(file.path) ?? readSmartMemoryId(this.app, file);
 
 			let itemId: string;
 			if (options.metadataOnly && existingId) {
-				// Metadata-only: PUT update, skip pipeline re-extraction
+				// Metadata-only: PUT update, skip pipeline re-extraction.
+				// MemoriesAPI.update accepts { metadata } directly (deep-merged).
 				await this.client.memories.update(existingId, {
 					metadata: { source_path: file.path },
 				});
 				itemId = existingId;
 			} else if (existingId && oldHash === newHash) {
 				// Content unchanged — verify the remote memory still exists before
-				// short-circuiting. If it was deleted server-side, we need to
-				// re-ingest so the user's note is actually represented in memory.
+				// short-circuiting. Only re-ingest on a true 404; on transient
+				// failures (5xx, network) we re-throw so the caller can retry,
+				// rather than silently creating a duplicate remote memory.
+				let remoteMissing = false;
 				try {
 					const remote: any = await this.client.memories.get(existingId);
 					if (remote?.item_id) {
 						this.emit({ type: 'ingest-complete', path: file.path, itemId: existingId });
 						return { itemId: existingId };
 					}
-				} catch {
-					// Remote 404 or transient — fall through to fresh ingest below
+					// 200 with no item_id is treated as missing
+					remoteMissing = true;
+				} catch (err) {
+					const status = (err as any)?.status;
+					if (status === 404) {
+						remoteMissing = true;
+					} else {
+						// Transient — let the caller decide (retry, surface, etc.)
+						throw err;
+					}
 				}
-				// Remote gone: drop stale mapping and proceed with fresh ingest
-				this.store.handleDelete(file.path);
-				const result = await this.client.memories.ingest({
-					content,
-					origin: 'import:obsidian',
-					metadata: { source_path: file.path },
-				});
-				itemId = result.item_id;
+				if (remoteMissing) {
+					this.store.handleDelete(file.path);
+					const result = await this.client.memories.ingest(content, {
+						context: { origin: 'import:obsidian', source_path: file.path },
+					});
+					itemId = result.item_id;
+				} else {
+					// Defensive: should not be reachable, but keeps types sound
+					itemId = existingId;
+				}
 			} else {
-				// First time OR content changed — full pipeline ingest
-				const payload: any = {
-					content,
-					origin: 'import:obsidian',
-					metadata: { source_path: file.path },
-				};
+				// First time OR content changed.
+				//
+				// WORKAROUND for missing server-side ingest dedupe.
+				// Tracked as CORE-INGEST-DEDUPE-1
+				// (smart-memory-docs/docs/features/CORE-INGEST-DEDUPE-1/design.md).
+				// Once that ships, /memory/ingest will dedupe by
+				// (tenant, origin, source_path) and return status=unchanged
+				// or status=replaced. At that point the delete-then-ingest
+				// dance below becomes unnecessary and should be removed.
+				//
+				// Why we still need it today: /memory/ingest always creates
+				// a new server item, so without deleting the prior one
+				// every save with edits would orphan a duplicate
+				// (the feedback loop seen in Phase 7 E2E — 124 memories
+				// from one note).
 				if (existingId) {
-					payload.metadata.smartmemory_id = existingId;
+					try {
+						await (this.client as any).memories.delete(existingId);
+					} catch (err) {
+						// 404 = already gone, fine. Other errors: log and
+						// proceed — orphaning is preferable to refusing to
+						// ingest the user's edited content.
+						const status = (err as any)?.status;
+						if (status !== 404) {
+							console.warn('[smartmemory] pre-ingest delete failed', existingId, err);
+						}
+					}
+					this.store.handleDelete(file.path);
 				}
-				const result = await this.client.memories.ingest(payload);
+				const context: Record<string, any> = {
+					origin: 'import:obsidian',
+					source_path: file.path,
+				};
+				const result = await this.client.memories.ingest(content, { context });
 				itemId = result.item_id;
 			}
 
 			this.store.set(file.path, itemId);
 			this.store.setContentHash(file.path, newHash);
+			this.notifyMappingsChanged();
 
+			// Mark before writing so the modify event fired by our own write
+			// is suppressed at the vault-events layer.
+			this.markSelfWrite(file.path);
 			// Always write the ID + sync timestamp; entities/relations come from enrichFile()
 			const writeResult = await writeSmartMemoryFrontmatter(this.app, file, { id: itemId }, this.settings);
 			if (!writeResult.ok) {
@@ -146,10 +228,13 @@ export class IngestService {
 			this.emit({ type: 'ingest-complete', path: file.path, itemId });
 
 			if (!options.skipEnrichment) {
+				console.log('[smartmemory] kicking off enrichment poll for', file.path, itemId);
 				// Fire-and-forget enrichment poll — don't block ingest completion
-				void this.enrichFile(file).catch(() => {
-					// Errors already surfaced via events
+				void this.enrichFile(file).catch((err) => {
+					console.error('[smartmemory] enrichFile threw', err);
 				});
+			} else {
+				console.log('[smartmemory] enrichment skipped (skipEnrichment=true) for', file.path);
 			}
 
 			return { itemId };
@@ -172,36 +257,97 @@ export class IngestService {
 	 */
 	async enrichFile(file: TFile): Promise<void> {
 		const itemId = this.store.getMemoryId(file.path) ?? readSmartMemoryId(this.app, file);
-		if (!itemId) return;
+		if (!itemId) {
+			console.warn('[smartmemory] enrichFile skipped — no itemId for', file.path);
+			return;
+		}
 
 		this.emit({ type: 'enrichment-start', path: file.path, itemId });
+		console.log('[smartmemory] enrichment polling start', file.path, itemId);
+
+		// Extracted entities live as graph neighbors (link_type=CONTAINS_ENTITY,
+		// memory_type=entity), NOT as item.entities. The MemoryItem.entities
+		// field is always null for graph-extracted items. We poll
+		// /memory/{id}/neighbors and synthesize the entity list from the
+		// CONTAINS_ENTITY edges. We also fetch the item once for memory_type.
+		let memoryType: string | undefined;
+		let itemRelations: any[] = [];
+		try {
+			const item: any = await this.client.memories.get(itemId);
+			memoryType = item?.memory_type;
+			// MemoryItem.relations is sometimes populated directly by the
+			// pipeline (LLM extractor path). When present, prefer it over
+			// the synthesized form. Otherwise we fall back to deriving
+			// relations from non-CONTAINS_ENTITY neighbor edges below.
+			if (Array.isArray(item?.relations)) {
+				itemRelations = item.relations;
+			}
+		} catch {
+			// non-fatal — memory_type is optional in the writeback
+		}
 
 		for (let attempt = 0; attempt < this.pollMaxAttempts; attempt++) {
 			if (this.pollDelayMs > 0) {
 				await sleep(this.pollDelayMs);
 			}
 
-			let item: any;
+			let neighbors: any[] = [];
 			try {
-				item = await this.client.memories.get(itemId);
-			} catch {
-				continue; // retry on transient error
+				const resp: any = await (this.client.memories as any).getNeighbors(itemId);
+				neighbors = Array.isArray(resp?.neighbors) ? resp.neighbors : [];
+			} catch (err) {
+				console.warn('[smartmemory] enrichment neighbors error (will retry)', err);
+				continue;
 			}
 
-			if (item?.entities && item.entities.length > 0) {
+			const entityNeighbors = neighbors.filter(
+				(n: any) => String(n?.link_type || '').toUpperCase() === 'CONTAINS_ENTITY',
+			);
+
+			console.log('[smartmemory] enrichment poll attempt', attempt + 1, {
+				itemId,
+				totalNeighbors: neighbors.length,
+				entityCount: entityNeighbors.length,
+				memoryType,
+			});
+
+			// Pipeline reports done when at least one entity is linked OR when
+			// neighbors are present at all (server may have completed with
+			// zero entities). We treat the first non-empty neighbors response
+			// as terminal; otherwise keep polling.
+			if (neighbors.length > 0) {
 				// Stale check: did a newer ingest replace our mapping?
 				const currentMapping = this.store.getMemoryId(file.path);
 				if (currentMapping && currentMapping !== itemId) {
-					// Newer ingest has taken over — drop this enrichment to avoid
-					// overwriting fresher metadata with stale results.
 					return;
 				}
 
+				const entities = entityNeighbors.map((n: any) => ({
+					name: String(n.content || '').trim(),
+					type: undefined as string | undefined,
+				})).filter(e => e.name.length > 0);
+
+				// Derive relations from non-CONTAINS_ENTITY, non-infrastructure
+				// edges among the returned neighbors. The /neighbors endpoint
+				// already filters out infra edges server-side, so anything
+				// surviving here that isn't CONTAINS_ENTITY is a real semantic
+				// link the user cares about (RELATES_TO, IS_A, WORKS_FOR, etc.).
+				const relationNeighbors = neighbors.filter(
+					(n: any) => String(n?.link_type || '').toUpperCase() !== 'CONTAINS_ENTITY',
+				);
+				const derivedRelations = relationNeighbors.map((n: any) => ({
+					subject: file.basename || file.name,
+					predicate: String(n.link_type || 'RELATES_TO').toLowerCase(),
+					object: String(n.content || n.item_id || '').trim(),
+				})).filter(r => !!r.object);
+				const relations = itemRelations.length > 0 ? itemRelations : derivedRelations;
+
+				this.markSelfWrite(file.path);
 				const writeResult = await writeSmartMemoryFrontmatter(this.app, file, {
 					id: itemId,
-					memoryType: item.memory_type,
-					entities: item.entities,
-					relations: item.relations || [],
+					memoryType,
+					entities,
+					relations,
 				}, this.settings);
 				if (!writeResult.ok) {
 					this.emit({
@@ -212,19 +358,18 @@ export class IngestService {
 					return;
 				}
 
-				// Cache entity → file mappings for auto-linking later
-				for (const entity of item.entities) {
-					if (entity?.name) {
-						this.store.setEntityFile(entity.name, file.path);
-					}
-				}
+				const entityNames = entities.map(e => e.name);
+				this.store.replaceEntitiesForFile(file.path, entityNames);
+				this.notifyMappingsChanged();
 
 				this.emit({ type: 'enrichment-complete', path: file.path, itemId });
+				console.log('[smartmemory] enrichment complete', file.path, `${entities.length} entities`);
 				return;
 			}
 		}
 
 		this.emit({ type: 'enrichment-timeout', path: file.path, itemId });
+		console.warn('[smartmemory] enrichment timed out — no neighbors returned for', itemId);
 	}
 
 	async ingestFolder(files: TFile[]): Promise<BatchResult> {

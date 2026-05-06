@@ -11,14 +11,27 @@ export function handleQuotaError(app: App, err: unknown): boolean {
 	const message = err instanceof Error ? err.message : String(err);
 	const errAny = err as any;
 	const status = errAny?.status;
-	// Prefer structured error_code from the SDK's APIError details
-	const errorCode = errAny?.data?.error_code || errAny?.error_code;
+	const data = errAny?.data || {};
+	const errorCode = data.error_code || errAny?.error_code;
+	const detail = (data.detail || '').toString().toLowerCase();
 
-	if (status === 403 || errorCode === 'quota_exceeded' || message.includes('quota_exceeded')) {
+	const isMemoryQuota =
+		errorCode === 'quota_exceeded' ||
+		message.includes('quota_exceeded') ||
+		detail.includes('memory quota') ||
+		(status === 403 && detail.includes('quota'));
+
+	const isQueryQuota =
+		errorCode === 'rate_limit' ||
+		message.includes('rate_limit') ||
+		detail.includes('query quota') ||
+		detail.includes('daily query');
+
+	if (isMemoryQuota) {
 		new UpgradeModal(app, 'Free tier note limit reached').open();
 		return true;
 	}
-	if (status === 429 || errorCode === 'rate_limit' || message.includes('rate_limit')) {
+	if (isQueryQuota || status === 429) {
 		new Notice('SmartMemory: daily limit reached. Upgrade to continue.');
 		return true;
 	}

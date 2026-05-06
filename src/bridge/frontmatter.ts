@@ -82,3 +82,23 @@ function formatRelation(rel: { subject?: string; predicate?: string; object?: st
 	const parts = [rel.subject, rel.predicate, rel.object].filter(Boolean);
 	return parts.join(' → ');
 }
+
+/**
+ * Strip a leading YAML frontmatter block (---\nYAML\n---\n) from raw content.
+ *
+ * We strip before hashing AND before sending to ingest so:
+ *   1. Our own frontmatter writes (smartmemory_id, last_sync) do NOT change
+ *      the body hash, breaking the auto-ingest feedback loop where each
+ *      writeback fires another modify event that fires another ingest.
+ *   2. The entity extractor only sees the user's actual prose — without
+ *      this, fields like `smartmemory_id` get extracted as entities and
+ *      pollute the graph.
+ *
+ * If no frontmatter is present, returns the original string unchanged.
+ */
+export function stripFrontmatter(raw: string): string {
+	if (!raw.startsWith('---')) return raw;
+	const match = raw.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
+	if (!match) return raw;
+	return raw.slice(match[0].length);
+}

@@ -1,4 +1,5 @@
 import type { SearchService, SearchResult } from './search';
+import { RECALL_EXCLUDE_ORIGIN_PREFIXES } from './search';
 import type { SmartMemorySettings } from '../types';
 
 const MIN_QUERY_LENGTH = 20;
@@ -80,6 +81,7 @@ export class SuggestionEngine {
 				query,
 				topK: 3,
 				multiHop: false,
+				excludeOriginPrefixes: RECALL_EXCLUDE_ORIGIN_PREFIXES,
 			});
 			if (seq !== this.requestSeq) return; // stale
 

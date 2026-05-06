@@ -21,7 +21,7 @@ export class ContradictionService {
 
 	async checkSupersession(itemId: string): Promise<SupersessionFinding | null> {
 		try {
-			const result: any = await (this.client.memories as any).neighbors(itemId);
+			const result: any = await (this.client.memories as any).getNeighbors(itemId);
 			const neighbors: any[] = Array.isArray(result?.neighbors) ? result.neighbors : [];
 
 			for (const n of neighbors) {

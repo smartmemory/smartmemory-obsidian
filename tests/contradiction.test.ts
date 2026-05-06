@@ -4,7 +4,7 @@ import { ContradictionService } from '../src/services/contradiction';
 function makeClient() {
 	return {
 		memories: {
-			neighbors: vi.fn(),
+			getNeighbors: vi.fn(),
 		},
 	};
 }
@@ -19,7 +19,7 @@ describe('ContradictionService.checkSupersession', () => {
 	});
 
 	it('returns null when item has no SUPERSEDES/SUPERSEDED_BY edges', async () => {
-		client.memories.neighbors.mockResolvedValue({
+		client.memories.getNeighbors.mockResolvedValue({
 			item_id: 'a',
 			neighbors: [
 				{ item_id: 'b', link_type: 'RELATED_TO' },
@@ -31,7 +31,7 @@ describe('ContradictionService.checkSupersession', () => {
 	});
 
 	it('detects when item has been superseded (incoming SUPERSEDED_BY edge)', async () => {
-		client.memories.neighbors.mockResolvedValue({
+		client.memories.getNeighbors.mockResolvedValue({
 			item_id: 'a',
 			neighbors: [
 				{ item_id: 'newer', link_type: 'SUPERSEDED_BY', content: 'newer version' },
@@ -44,7 +44,7 @@ describe('ContradictionService.checkSupersession', () => {
 	});
 
 	it('detects when item supersedes another (outgoing SUPERSEDES edge)', async () => {
-		client.memories.neighbors.mockResolvedValue({
+		client.memories.getNeighbors.mockResolvedValue({
 			item_id: 'a',
 			neighbors: [
 				{ item_id: 'older', link_type: 'SUPERSEDES', content: 'older version' },
@@ -57,13 +57,13 @@ describe('ContradictionService.checkSupersession', () => {
 	});
 
 	it('returns null on API error', async () => {
-		client.memories.neighbors.mockRejectedValue(new Error('boom'));
+		client.memories.getNeighbors.mockRejectedValue(new Error('boom'));
 		const result = await service.checkSupersession('a');
 		expect(result).toBeNull();
 	});
 
 	it('handles missing neighbors array gracefully', async () => {
-		client.memories.neighbors.mockResolvedValue({ item_id: 'a' });
+		client.memories.getNeighbors.mockResolvedValue({ item_id: 'a' });
 		const result = await service.checkSupersession('a');
 		expect(result).toBeNull();
 	});

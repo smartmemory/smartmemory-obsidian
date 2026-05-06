@@ -11,8 +11,16 @@ function createMockClient() {
 			get: vi.fn().mockResolvedValue({
 				item_id: 'item-new',
 				memory_type: 'semantic',
-				entities: [{ name: 'Asimov', type: 'Person' }],
-				relations: [],
+			}),
+			// Enrichment now reads entities from graph neighbors with
+			// link_type=CONTAINS_ENTITY. The MemoryItem.entities field is
+			// always null for graph-extracted items, so polling get()
+			// repeatedly was a no-op before this refactor.
+			getNeighbors: vi.fn().mockResolvedValue({
+				item_id: 'item-new',
+				neighbors: [
+					{ item_id: 'e1', content: 'Asimov', memory_type: 'entity', link_type: 'CONTAINS_ENTITY' },
+				],
 			}),
 		},
 	};
@@ -76,14 +84,20 @@ describe('IngestService.ingestFile', () => {
 	});
 
 	describe('first-time ingest', () => {
-		it('POSTs ingest with origin import:obsidian and writes mapping', async () => {
+		it('POSTs ingest with content as positional arg and origin in context', async () => {
 			const file = { path: 'notes/asimov.md', _content: 'About Asimov' };
 			const result = await service.ingestFile(file as any);
 
-			expect(client.memories.ingest).toHaveBeenCalledWith(expect.objectContaining({
-				content: 'About Asimov',
-				origin: 'import:obsidian',
-			}));
+			// SDK contract: ingest(content: string, { context })
+			expect(client.memories.ingest).toHaveBeenCalledWith(
+				'About Asimov',
+				expect.objectContaining({
+					context: expect.objectContaining({
+						origin: 'import:obsidian',
+						source_path: 'notes/asimov.md',
+					}),
+				}),
+			);
 			expect(result.itemId).toBe('item-new');
 			expect(store.getMemoryId('notes/asimov.md')).toBe('item-new');
 			expect(app._frontmatters['notes/asimov.md'].smartmemory_id).toBe('item-new');
@@ -123,46 +137,51 @@ describe('IngestService.ingestFile', () => {
 	});
 
 	describe('enrichment polling', () => {
-		it('writes entities + relations to frontmatter when extraction succeeds', async () => {
+		it('writes entities to frontmatter when CONTAINS_ENTITY neighbors arrive', async () => {
 			const file = { path: 'a.md', _content: 'hi' };
 			await service.ingestFile(file as any, { skipEnrichment: true });
 			await service.enrichFile(file as any);
 
-			expect(app._frontmatters['a.md'].smartmemory_entities).toEqual(['Asimov (Person)']);
+			expect(app._frontmatters['a.md'].smartmemory_entities).toEqual(['Asimov']);
 			expect(app._frontmatters['a.md'].smartmemory_type).toBe('semantic');
 		});
 
-		it('retries when entities are not yet ready', async () => {
+		it('retries when neighbors are not yet ready', async () => {
 			const file = { path: 'a.md', _content: 'hi' };
 			await service.ingestFile(file as any, { skipEnrichment: true });
-			client.memories.get.mockClear();
+			client.memories.getNeighbors.mockClear();
 
 			let callCount = 0;
-			client.memories.get.mockImplementation(async () => {
+			client.memories.getNeighbors.mockImplementation(async () => {
 				callCount++;
 				if (callCount < 2) {
-					return { item_id: 'item-new', entities: null };
+					return { item_id: 'item-new', neighbors: [] };
 				}
-				return { item_id: 'item-new', entities: [{ name: 'X', type: 'Y' }], memory_type: 'semantic' };
+				return {
+					item_id: 'item-new',
+					neighbors: [
+						{ item_id: 'e1', content: 'X', memory_type: 'entity', link_type: 'CONTAINS_ENTITY' },
+					],
+				};
 			});
 
 			await service.enrichFile(file as any);
 			expect(callCount).toBe(2);
-			expect(app._frontmatters['a.md'].smartmemory_entities).toEqual(['X (Y)']);
+			expect(app._frontmatters['a.md'].smartmemory_entities).toEqual(['X']);
 		});
 
 		it('gives up after pollMaxAttempts and emits timeout event', async () => {
 			const file = { path: 'a.md', _content: 'hi' };
 			await service.ingestFile(file as any, { skipEnrichment: true });
-			client.memories.get.mockClear();
-			client.memories.get.mockResolvedValue({ item_id: 'item-new', entities: null });
+			client.memories.getNeighbors.mockClear();
+			client.memories.getNeighbors.mockResolvedValue({ item_id: 'item-new', neighbors: [] });
 			events.length = 0;
 
 			await service.enrichFile(file as any);
 
 			const timeoutEvent = events.find(e => e.type === 'enrichment-timeout');
 			expect(timeoutEvent).toBeDefined();
-			expect(client.memories.get).toHaveBeenCalledTimes(3);
+			expect(client.memories.getNeighbors).toHaveBeenCalledTimes(3);
 		});
 	});
 

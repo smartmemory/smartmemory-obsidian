@@ -1,4 +1,4 @@
-import { TAbstractFile, TFile } from 'obsidian';
+import { TAbstractFile, TFile, Notice } from 'obsidian';
 import type SmartMemoryPlugin from '../main';
 import { KeyedDebouncer } from '../util/debouncer';
 
@@ -59,7 +59,17 @@ export class VaultEvents {
 				if (!(file instanceof TFile) || file.extension !== 'md') return;
 				if (!this.plugin.settings.autoIngestOnSave) return;
 				if (this.plugin.ingestService?.batchInProgress) return;
+				// Skip modify events fired by our own frontmatter writes.
+				// Without this, every successful ingest still burns a 5s
+				// debounce window and re-runs runAutoIngest (which then
+				// short-circuits via hash, but at the cost of a redundant
+				// vault read + log noise).
+				if (this.plugin.ingestService?.isSelfWrite(file.path)) {
+					console.debug('[smartmemory] modify event ignored — self-write', file.path);
+					return;
+				}
 
+				console.debug('[smartmemory] modify event scheduled', file.path);
 				this.modifyDebouncer.schedule(file.path, () => {
 					void this.runAutoIngest(file);
 				});
@@ -72,6 +82,7 @@ export class VaultEvents {
 				if (!this.plugin.settings.autoIngestOnCreate) return;
 				if (this.plugin.ingestService?.batchInProgress) return;
 
+				console.debug('[smartmemory] create event scheduled', file.path);
 				this.createDebouncer.schedule(file.path, () => {
 					void this.runAutoIngest(file);
 				});
@@ -87,12 +98,25 @@ export class VaultEvents {
 
 	private async runAutoIngest(file: TFile): Promise<void> {
 		const service = this.plugin.ingestService;
-		if (!service) return;
-		if (service.batchInProgress) return;
+		if (!service) {
+			console.warn('[smartmemory] auto-ingest skipped — no ingestService', file.path);
+			return;
+		}
+		if (service.batchInProgress) {
+			console.debug('[smartmemory] auto-ingest skipped — batch in progress', file.path);
+			return;
+		}
+		console.log('[smartmemory] auto-ingest firing', file.path);
 		try {
 			await service.ingestFile(file);
-		} catch {
-			// Surfaced via ingest events; auto-ingest stays silent on per-file failures
+			console.log('[smartmemory] auto-ingest succeeded', file.path);
+		} catch (err) {
+			// Surface failures so users notice them; previous silent catch hid
+			// real bugs (HTTP 422, auth issues, contract drift) for entire test
+			// rounds while every ingest looked like a no-op.
+			console.error('[smartmemory] auto-ingest failed', file.path, err);
+			const msg = err instanceof Error ? err.message : String(err);
+			new Notice(`SmartMemory: auto-ingest failed — ${msg}`, 8000);
 		}
 	}
 }

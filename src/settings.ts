@@ -91,16 +91,6 @@ export class SmartMemorySettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
-			.setName('Workspace ID')
-			.setDesc('SmartMemory workspace identifier (X-Workspace-Id header)')
-			.addText(text => text
-				.setValue(this.plugin.settings.workspaceId)
-				.onChange((value) => {
-					this.plugin.settings.workspaceId = value;
-					this.debouncedSave();
-				}));
-
-		new Setting(containerEl)
 			.setName('Test connection')
 			.addButton(btn => btn
 				.setButtonText('Test')
@@ -111,6 +101,22 @@ export class SmartMemorySettingTab extends PluginSettingTab {
 					const ok = await this.plugin.testConnection();
 					new Notice(ok ? 'SmartMemory: connected' : 'SmartMemory: connection failed');
 				}));
+
+		// Advanced — workspace ID is auto-discovered from /auth/me on first
+		// connect; only power users in multi-workspace tenants need to override.
+		const advanced = containerEl.createEl('details', { cls: 'smartmemory-advanced' });
+		advanced.createEl('summary', { text: 'Advanced' });
+		new Setting(advanced)
+			.setName('Workspace ID override')
+			.setDesc('Leave blank to use the workspace your API key is bound to. Set only when you belong to multiple workspaces and want to target a non-default one.')
+			.addText(text => {
+				text.setPlaceholder('Auto-discovered')
+					.setValue(this.plugin.settings.workspaceId)
+					.onChange((value) => {
+						this.plugin.settings.workspaceId = value.trim();
+						this.debouncedSave();
+					});
+			});
 
 		// Ingest
 		containerEl.createEl('h3', { text: 'Ingest' });
@@ -137,7 +143,7 @@ export class SmartMemorySettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Exclude folders')
-			.setDesc('Comma-separated glob patterns to exclude from ingest')
+			.setDesc('Comma-separated path prefixes to exclude from ingest (e.g. templates/, .obsidian/)')
 			.addText(text => text
 				.setValue(this.plugin.settings.excludeFolders.join(','))
 				.onChange((value) => {

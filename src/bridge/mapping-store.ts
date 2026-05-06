@@ -64,6 +64,14 @@ export class MappingStore {
 			delete this.contentHashes[oldPath];
 			this.contentHashes[newPath] = hash;
 		}
+
+		// Re-point any entity → file mappings that referenced the old path so
+		// auto-link does not propose stale wikilinks.
+		for (const [entity, path] of Object.entries(this.entityToFile)) {
+			if (path === oldPath) {
+				this.entityToFile[entity] = newPath;
+			}
+		}
 	}
 
 	handleDelete(filePath: string): void {
@@ -73,6 +81,13 @@ export class MappingStore {
 		}
 		delete this.fileToMemory[filePath];
 		delete this.contentHashes[filePath];
+
+		// Drop entity → file mappings that pointed at the deleted note.
+		for (const [entity, path] of Object.entries(this.entityToFile)) {
+			if (path === filePath) {
+				delete this.entityToFile[entity];
+			}
+		}
 	}
 
 	setContentHash(filePath: string, hash: string): void {
@@ -89,6 +104,24 @@ export class MappingStore {
 
 	getEntityFile(entityName: string): string | null {
 		return this.entityToFile[entityName] ?? null;
+	}
+
+	/**
+	 * Replace all entity → file mappings owned by `filePath` with `entityNames`.
+	 * Drops any prior entity that pointed at this file but is no longer in the
+	 * extracted set, so re-enrichment with shrunken/empty entities does not
+	 * leave stale auto-link targets behind. Other files' mappings are
+	 * untouched.
+	 */
+	replaceEntitiesForFile(filePath: string, entityNames: string[]): void {
+		for (const [entity, path] of Object.entries(this.entityToFile)) {
+			if (path === filePath) {
+				delete this.entityToFile[entity];
+			}
+		}
+		for (const name of entityNames) {
+			if (name) this.entityToFile[name] = filePath;
+		}
 	}
 
 	toJSON(): VaultMappings {

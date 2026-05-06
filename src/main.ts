@@ -1,4 +1,7 @@
-import { Plugin } from 'obsidian';
+import { Plugin, Notice } from 'obsidian';
+
+// Injected by esbuild's `define`; see esbuild.config.mjs.
+declare const __SMARTMEMORY_VERSION__: string;
 import { SmartMemoryClient } from 'smartmemory-sdk-js/core';
 import { createObsidianFetch } from './transport';
 import { SmartMemorySettingTab } from './settings';
@@ -73,6 +76,16 @@ export default class SmartMemoryPlugin extends Plugin {
 			});
 		}
 
+		// Backfill memory→file mappings from vault frontmatter on every load.
+		// Without this, items ingested before mapping persistence shipped (or
+		// from an earlier vault, or any path that wrote `smartmemory_id` to
+		// frontmatter without persisting the store) appear unmapped to recall
+		// and trigger the "create new note" branch on Open. Cheap to run —
+		// metadataCache is already warm by onLayoutReady.
+		this.app.workspace.onLayoutReady(() => {
+			void this.backfillMappingsFromVault();
+		});
+
 		this.registerView(SEARCH_VIEW_TYPE, (leaf) => new SearchView(leaf, this));
 		this.registerView(ENTITY_VIEW_TYPE, (leaf) => new EntityView(leaf, this));
 		this.registerView(GRAPH_VIEW_TYPE, (leaf) => new GraphView(leaf, this));
@@ -84,6 +97,27 @@ export default class SmartMemoryPlugin extends Plugin {
 				const leaf = this.app.workspace.getLeaf();
 				await leaf.setViewState({ type: GRAPH_VIEW_TYPE, active: true });
 				this.app.workspace.revealLeaf(leaf);
+			},
+		});
+
+		// "Open search sidebar" + "Open entity backlinks sidebar" + recall hotkey
+		// are registered in registerSearchCommands(this) above. Don't re-add
+		// the same ids here — Obsidian silently shadows the prior registration
+		// when an id collides.
+
+		this.addCommand({
+			id: 'smartmemory-purge-obsidian-origin',
+			name: 'Danger: purge all Obsidian-origin memories from this workspace',
+			callback: async () => {
+				await this.purgeObsidianOriginMemories();
+			},
+		});
+
+		this.addCommand({
+			id: 'smartmemory-diagnose-loop',
+			name: 'Diagnose ingest loop (counts memories, prints to console)',
+			callback: async () => {
+				await this.diagnoseLoop();
 			},
 		});
 
@@ -104,6 +138,39 @@ export default class SmartMemoryPlugin extends Plugin {
 		// Connection test on load (non-blocking)
 		this.testConnection().catch(() => {
 			// Failure already reflected in status bar
+		});
+
+		// Diagnostic: surface plugin state on load so users (and the smoke
+		// test) can confirm at a glance what's wired vs missing. The notice
+		// lingers ~10s; set NODE_ENV=production builds keep it for parity.
+		this.surfaceLoadState();
+	}
+
+	private surfaceLoadState(): void {
+		const cfg = this.settings;
+		const hasKey = !!this.resolveApiKey();
+		const parts: string[] = [];
+		if (!hasKey) parts.push('no API key');
+		if (!cfg.apiUrl) parts.push('no API URL');
+		if (!cfg.workspaceId) parts.push('workspace auto-discovering');
+		if (!cfg.autoIngestOnSave) parts.push('auto-ingest-on-save OFF');
+		if (!cfg.autoIngestOnCreate) parts.push('auto-ingest-on-create OFF');
+		// Build-time version, injected by esbuild via `define` from
+		// package.json. Always in sync with manifest.json + versions.json
+		// because the husky pre-commit hook bumps all three together.
+		const BUNDLE_TAG = __SMARTMEMORY_VERSION__;
+		const summary = parts.length === 0
+			? `SmartMemory loaded [${BUNDLE_TAG}] — auto-ingest ON (${cfg.apiUrl})`
+			: `SmartMemory loaded [${BUNDLE_TAG}] — issues: ${parts.join(', ')}`;
+		new Notice(summary, 10000);
+		// Also log so the console captures it for verbatim copy.
+		console.log('[smartmemory] load state', {
+			apiUrl: cfg.apiUrl,
+			hasApiKey: hasKey,
+			workspaceId: cfg.workspaceId || '(auto)',
+			autoIngestOnSave: cfg.autoIngestOnSave,
+			autoIngestOnCreate: cfg.autoIngestOnCreate,
+			ingestDebounceMs: cfg.ingestDebounceMs,
 		});
 	}
 
@@ -142,17 +209,46 @@ export default class SmartMemoryPlugin extends Plugin {
 
 		if (this.settings.workspaceId) {
 			this.client.setTeamId(this.settings.workspaceId);
+		} else {
+			// Auto-discover from /auth/me — the API key already binds a tenant
+			// and the user has a default workspace. Cache the result back into
+			// settings so we don't re-fetch on every reconnect.
+			void this.discoverWorkspace(this.clientGeneration);
 		}
 
 		this.searchService = new SearchService(this.client);
 		this.graphCache = new GraphCache(this.client);
 		this.contradictionService = new ContradictionService(this.client);
 
+		this.maybeStartIngestService();
+	}
+
+	private async discoverWorkspace(generation: number): Promise<void> {
+		const client = this.client;
+		if (!client) return;
+		try {
+			const me: any = await (client as any).authAPI.getCurrentUser();
+			// Stale: settings or client changed while we were waiting
+			if (generation !== this.clientGeneration) return;
+			const teamId = me?.default_team_id || me?.user?.default_team_id;
+			if (teamId && !this.settings.workspaceId) {
+				this.client?.setTeamId(teamId);
+				this.settings.workspaceId = teamId;
+				this.debouncedSave();
+			}
+		} catch {
+			// Discovery is best-effort; manual entry is still available.
+		}
+	}
+
+	private maybeStartIngestService(): void {
+		if (!this.client) return;
 		this.ingestService = new IngestService({
 			client: this.client,
 			app: this.app,
 			mappingStore: this.mappingStore,
 			settings: this.settings,
+			onMappingsChanged: () => this.saveMappings(),
 			onEvent: (event) => {
 				if (event.type === 'batch-progress') {
 					this.statusBar?.setStatus('syncing');
@@ -163,9 +259,38 @@ export default class SmartMemoryPlugin extends Plugin {
 				} else if (event.type === 'enrichment-complete') {
 					this.statusBar?.setLastSync(new Date());
 					this.graphCache?.invalidate();
+				} else if (event.type === 'enrichment-timeout') {
+					this.surfaceEnrichmentTimeout(event.path);
 				}
 			},
 		});
+	}
+
+	/**
+	 * Surface enrichment timeouts with a clickable Retry action. Long
+	 * extractions (LLM rate-limit, queue) outrun the 12s poll budget; the
+	 * retry path re-runs only the enrichment poll, not full ingest.
+	 */
+	private surfaceEnrichmentTimeout(path: string): void {
+		const fragment = document.createDocumentFragment();
+		const text = document.createElement('span');
+		text.textContent = `SmartMemory: enrichment is still running for "${path}". `;
+		fragment.appendChild(text);
+		const retry = document.createElement('a');
+		retry.textContent = 'Retry';
+		retry.style.cursor = 'pointer';
+		retry.style.textDecoration = 'underline';
+		retry.addEventListener('click', () => {
+			const file = this.app.vault.getAbstractFileByPath(path);
+			if (file && this.ingestService) {
+				void this.ingestService.enrichFile(file as any).catch((err) => {
+					console.error('[smartmemory] retry enrich failed', err);
+				});
+				new Notice(`Retrying enrichment for ${path}…`, 3000);
+			}
+		});
+		fragment.appendChild(retry);
+		new Notice(fragment, 12000);
 	}
 
 	/**
@@ -204,6 +329,15 @@ export default class SmartMemoryPlugin extends Plugin {
 		const data = (await this.loadData()) as PluginData | null;
 		this.settings = { ...DEFAULT_SETTINGS, ...(data?.settings || {}) };
 		this.mappingStore = new MappingStore(data?.mappings || EMPTY_MAPPINGS);
+
+		// Pre-onboarding migration: until a user completes onboarding, honor the
+		// current defaults for seamless ingest rather than whatever was persisted
+		// during earlier development versions. Without this, users who installed
+		// before the seamless flip stay on the old false/false defaults silently.
+		if (!this.settings.hasCompletedOnboarding) {
+			this.settings.autoIngestOnSave = DEFAULT_SETTINGS.autoIngestOnSave;
+			this.settings.autoIngestOnCreate = DEFAULT_SETTINGS.autoIngestOnCreate;
+		}
 	}
 
 	async saveSettings(): Promise<void> {
@@ -218,6 +352,30 @@ export default class SmartMemoryPlugin extends Plugin {
 
 	async saveMappings(): Promise<void> {
 		await this.serializedSave();
+	}
+
+	/**
+	 * Walk every markdown file's cached frontmatter and re-seed the mapping
+	 * store from any `smartmemory_id` we find. Idempotent; only writes when
+	 * the in-memory mapping is missing or stale relative to frontmatter.
+	 * Persists once at the end if any change was made.
+	 */
+	private async backfillMappingsFromVault(): Promise<void> {
+		const files = this.app.vault.getMarkdownFiles();
+		let changed = 0;
+		for (const file of files) {
+			const cache = this.app.metadataCache.getFileCache(file);
+			const id = cache?.frontmatter?.smartmemory_id;
+			if (typeof id !== 'string' || !id) continue;
+			const known = this.mappingStore.getMemoryId(file.path);
+			if (known === id) continue;
+			this.mappingStore.set(file.path, id);
+			changed++;
+		}
+		if (changed > 0) {
+			console.log(`[smartmemory] backfilled ${changed} mapping(s) from vault frontmatter`);
+			await this.saveMappings();
+		}
 	}
 
 	/** All persistence goes through this serialized chain so concurrent calls
@@ -235,6 +393,144 @@ export default class SmartMemoryPlugin extends Plugin {
 			mappings: this.mappingStore.toJSON(),
 		};
 		await this.saveData(data);
+	}
+
+	/**
+	 * Open a registered ItemView in the right sidebar (creating the leaf if
+	 * needed) and reveal it. Used by the search and entity panes which the
+	 * plan pins to the right pane; the graph pane gets a center leaf instead.
+	 */
+	/**
+	 * Walk every memory in the workspace, find ones whose origin starts with
+	 * `import:obsidian`, delete them server-side, clear all `smartmemory_*`
+	 * frontmatter on local notes, and reset the mapping store. Confirms via a
+	 * Notice with the count before acting.
+	 *
+	 * Use this to recover from auto-ingest feedback loops that left duplicate
+	 * server-side memories. Local note bodies are not touched; only the YAML
+	 * frontmatter our plugin owns.
+	 */
+	private async purgeObsidianOriginMemories(): Promise<void> {
+		const client = this.client;
+		if (!client) {
+			new Notice('SmartMemory: not connected — set API key first.');
+			return;
+		}
+		new Notice('SmartMemory: scanning memories for purge…', 5000);
+
+		const toDelete: string[] = [];
+		let offset = 0;
+		const pageSize = 200;
+		// Page through /memory/list. Stop when the page returns < pageSize.
+		while (true) {
+			let page: any;
+			try {
+				page = await (client as any).memories.list({ limit: pageSize, offset });
+			} catch (err) {
+				console.error('[smartmemory] purge list failed', err);
+				new Notice('SmartMemory: purge aborted — list failed (see console).');
+				return;
+			}
+			const items: any[] = Array.isArray(page) ? page : (page?.items || []);
+			for (const item of items) {
+				const origin = item.origin || item.metadata?.origin || '';
+				if (typeof origin === 'string' && origin.startsWith('import:obsidian')) {
+					toDelete.push(item.item_id);
+				}
+			}
+			if (items.length < pageSize) break;
+			offset += items.length;
+		}
+
+		if (toDelete.length === 0) {
+			new Notice('SmartMemory: no Obsidian-origin memories found.');
+			return;
+		}
+
+		console.log('[smartmemory] purging', toDelete.length, 'Obsidian-origin memories');
+		let succeeded = 0;
+		let failed = 0;
+		for (const id of toDelete) {
+			try {
+				await (client as any).memories.delete(id);
+				succeeded++;
+			} catch (err) {
+				failed++;
+				console.warn('[smartmemory] delete failed', id, err);
+			}
+		}
+
+		// Clear mapping store and frontmatter on every local note that had a smartmemory_id.
+		const files = this.app.vault.getMarkdownFiles();
+		const { clearSmartMemoryFrontmatter } = await import('./bridge/frontmatter');
+		for (const f of files) {
+			const id = this.mappingStore.getMemoryId(f.path);
+			if (id) this.mappingStore.handleDelete(f.path);
+			await clearSmartMemoryFrontmatter(this.app, f);
+		}
+		await this.saveMappings();
+
+		new Notice(
+			`SmartMemory purge complete: deleted ${succeeded}/${toDelete.length} server memories${failed ? ` (${failed} failed)` : ''}; cleared local frontmatter.`,
+			10000,
+		);
+	}
+
+	/**
+	 * Diagnostic: counts current Obsidian-origin memories on the server vs
+	 * mappings the plugin tracks locally. Logs both, plus the active note's
+	 * mapped item_id (if any), so a user can tell at a glance whether a
+	 * subsequent save creates a new memory (loop active) or reuses the
+	 * existing one (loop fixed).
+	 */
+	private async diagnoseLoop(): Promise<void> {
+		const client = this.client;
+		if (!client) {
+			new Notice('SmartMemory: not connected.');
+			return;
+		}
+		let total = 0;
+		const byOriginPrefix: Record<string, number> = {};
+		let offset = 0;
+		const pageSize = 200;
+		while (true) {
+			const page: any = await (client as any).memories.list({ limit: pageSize, offset });
+			const items: any[] = Array.isArray(page) ? page : (page?.items || []);
+			total += items.length;
+			for (const item of items) {
+				const origin = String(item.origin || 'unknown');
+				// Group by `prefix:` so `evolver:episodic_to_semantic` and
+				// `evolver:opinion_synthesis` collapse, while `import:obsidian`
+				// stays distinct from `import:other`.
+				const colon = origin.indexOf(':');
+				const prefix = colon > 0 ? origin.slice(0, colon + 1) + (origin.slice(colon + 1).split(/[/_]/)[0] || '') : origin;
+				byOriginPrefix[prefix] = (byOriginPrefix[prefix] || 0) + 1;
+			}
+			if (items.length < pageSize) break;
+			offset += items.length;
+		}
+		const active = this.app.workspace.getActiveFile();
+		const mappedId = active ? this.mappingStore.getMemoryId(active.path) : null;
+		const breakdown = Object.entries(byOriginPrefix)
+			.sort((a, b) => b[1] - a[1])
+			.map(([k, v]) => `${k}=${v}`)
+			.join(', ');
+		const summary = `total=${total} | ${breakdown} | active-note-mapped-id=${mappedId ?? '(none)'}`;
+		console.log('[smartmemory] diagnose-loop', { total, byOriginPrefix, mappedId });
+		new Notice(`SmartMemory diagnose: ${summary}`, 15000);
+	}
+
+	private async activateRightLeafView(viewType: string): Promise<void> {
+		const ws = this.app.workspace;
+		const existing = ws.getLeavesOfType(viewType);
+		if (existing.length > 0) {
+			ws.revealLeaf(existing[0]);
+			return;
+		}
+		const leaf = ws.getRightLeaf(false);
+		if (!leaf) return;
+		await leaf.setViewState({ type: viewType, active: true });
+		ws.revealLeaf(leaf);
 	}
 
 	private runCommand(commandId: string): void {

@@ -36,14 +36,27 @@ export function registerSearchCommands(plugin: SmartMemoryPlugin): void {
 		id: 'smartmemory-recall-current-note',
 		name: 'Recall related memories for current note',
 		hotkeys: [{ modifiers: ['Mod', 'Shift'], key: 'r' }],
-		callback: () => {
+		callback: async () => {
+			// Prefer an active editor selection; fall back to the active file's
+			// content. We deliberately do NOT require focus to be inside the
+			// markdown editor — `getActiveViewOfType(MarkdownView)` returns
+			// null when focus is in a plugin sidebar, which made the hotkey
+			// feel broken whenever the user had just clicked a sidebar.
 			const view = plugin.app.workspace.getActiveViewOfType(MarkdownView);
-			if (!view) {
-				new Notice('SmartMemory: no active note');
-				return;
+			let query = view?.editor.getSelection() ?? '';
+			if (!query) {
+				const file = plugin.app.workspace.getActiveFile();
+				if (!file) {
+					new Notice('SmartMemory: no active note');
+					return;
+				}
+				try {
+					query = await plugin.app.vault.read(file);
+				} catch {
+					new Notice('SmartMemory: could not read active note');
+					return;
+				}
 			}
-			const selection = view.editor.getSelection();
-			const query = selection || view.editor.getValue();
 			if (!query.trim()) {
 				new Notice('SmartMemory: nothing to recall');
 				return;

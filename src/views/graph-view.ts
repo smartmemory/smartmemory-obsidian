@@ -140,7 +140,7 @@ export class GraphView extends ItemView {
 		const cyNodes = nodes.map(n => ({
 			data: {
 				id: n.id,
-				label: truncate(n.label || n.content || n.id, 30),
+				label: truncate(n.label || n.content || n.id, 18),
 				color: nodeColor(n),
 				isFocus: n.id === focusId,
 			},
@@ -182,7 +182,10 @@ export class GraphView extends ItemView {
 		this.rootEl.createDiv({ cls: 'smartmemory-graph-message', text: msg });
 	}
 
-	private cytoscapeStyle(): cytoscape.Stylesheet[] {
+	private cytoscapeStyle(): any[] {
+		// Cast as any[] so advanced label properties (text-wrap, text-max-width,
+		// text-overflow-wrap) aren't silently dropped by the narrower
+		// cytoscape.Stylesheet type. Cytoscape accepts them at runtime.
 		return [
 			{
 				selector: 'node',
@@ -191,42 +194,49 @@ export class GraphView extends ItemView {
 					'label': 'data(label)',
 					'text-valign': 'bottom',
 					'text-halign': 'center',
-					'text-margin-y': 4,
-					'font-size': 10,
+					'text-margin-y': '4px',
+					'font-size': '9px',
 					'text-wrap': 'ellipsis',
-					'text-max-width': 120,
-					'color': '#d4d4d4',
-					'width': 14,
-					'height': 14,
+					'text-max-width': '90px',
+					'text-overflow-wrap': 'anywhere',
+					'color': '#9ca3af',
+					'text-opacity': 0.85,
+					'width': '12px',
+					'height': '12px',
+					'border-width': 0,
 				},
 			},
 			{
 				selector: 'node[?isFocus]',
 				style: {
-					'border-width': 2,
+					'border-width': '2px',
 					'border-color': '#7c3aed',
-					'width': 22,
-					'height': 22,
+					'width': '18px',
+					'height': '18px',
+					'color': '#e5e7eb',
+					'text-opacity': 1,
+					'font-size': '10px',
 				},
 			},
 			{
 				selector: 'edge',
 				style: {
 					'curve-style': 'bezier',
-					'line-color': '#666',
-					'target-arrow-color': '#666',
+					'line-color': '#4b5563',
+					'target-arrow-color': '#4b5563',
 					'target-arrow-shape': 'triangle',
-					'arrow-scale': 0.8,
-					'width': 1,
+					'arrow-scale': 0.7,
+					'width': '0.8px',
 					'line-style': 'dashed',
-					'opacity': 0.7,
+					'opacity': 0.6,
 				},
 			},
 			{
 				selector: 'edge[?structural]',
 				style: {
 					'line-style': 'solid',
-					'width': 1.5,
+					'width': '1.2px',
+					'opacity': 0.85,
 				},
 			},
 		];

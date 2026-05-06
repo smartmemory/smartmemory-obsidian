@@ -1,0 +1,7 @@
+/* Tailwind directives — content scanning resolves to actual utility classes
+ * at build time. Wrapped under .smartmemory-graph-view by the build pipeline
+ * so the utilities don't leak into Obsidian's main UI.
+ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

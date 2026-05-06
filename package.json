@@ -1,6 +1,6 @@
 {
 	"name": "smartmemory-obsidian",
-	"version": "0.1.9",
+	"version": "0.1.10",
 	"description": "SmartMemory plugin for Obsidian",
 	"main": "main.js",
 	"scripts": {
@@ -12,14 +12,22 @@
 	},
 	"devDependencies": {
 		"@types/node": "^22.0.0",
+		"@types/react": "^18.3.0",
+		"@types/react-dom": "^18.3.0",
+		"autoprefixer": "^10.4.0",
 		"esbuild": "^0.24.0",
 		"husky": "^9.1.7",
 		"obsidian": "latest",
+		"postcss": "^8.4.0",
+		"tailwindcss": "^3.4.0",
 		"typescript": "^5.6.0",
 		"vitest": "^3.0.0"
 	},
 	"dependencies": {
+		"@smartmemory/graph": "file:../smart-memory-graph",
 		"cytoscape": "^3.33.0",
+		"react": "^18.3.0",
+		"react-dom": "^18.3.0",
 		"smartmemory-sdk-js": "file:../smart-memory-sdk-js"
 	}
 }

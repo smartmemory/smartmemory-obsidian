@@ -9,7 +9,6 @@ import { StatusBarController } from './status-bar';
 import { MappingStore } from './bridge/mapping-store';
 import { IngestService } from './services/ingest';
 import { SearchService } from './services/search';
-import { GraphCache } from './services/graph-cache';
 import { ContradictionService } from './services/contradiction';
 import { registerIngestCommands } from './commands/ingest';
 import { registerSearchCommands } from './commands/search';
@@ -30,7 +29,6 @@ export default class SmartMemoryPlugin extends Plugin {
 	mappingStore: MappingStore = new MappingStore({ ...EMPTY_MAPPINGS });
 	ingestService: IngestService | null = null;
 	searchService: SearchService | null = null;
-	graphCache: GraphCache | null = null;
 	contradictionService: ContradictionService | null = null;
 	contradictionBanner: ContradictionBanner | null = null;
 	inlineSuggestions: InlineSuggestions | null = null;
@@ -130,7 +128,10 @@ export default class SmartMemoryPlugin extends Plugin {
 				}
 				for (const leaf of this.app.workspace.getLeavesOfType(GRAPH_VIEW_TYPE)) {
 					const view = leaf.view;
-					if (view instanceof GraphView) void view.refresh();
+					if (view instanceof GraphView) {
+					// GraphExplorer subscribes to its own focus state — the
+					// view re-renders on active-leaf-change internally.
+				}
 				}
 			})
 		);
@@ -179,7 +180,6 @@ export default class SmartMemoryPlugin extends Plugin {
 		this.statusBar = null;
 		this.ingestService = null;
 		this.searchService = null;
-		this.graphCache = null;
 		this.contradictionService = null;
 		this.contradictionBanner = null;
 		this.inlineSuggestions?.stop();
@@ -194,7 +194,6 @@ export default class SmartMemoryPlugin extends Plugin {
 			this.client = null;
 			this.ingestService = null;
 			this.searchService = null;
-			this.graphCache = null;
 			this.contradictionService = null;
 			this.statusBar?.setStatus('disconnected');
 			return;
@@ -217,7 +216,6 @@ export default class SmartMemoryPlugin extends Plugin {
 		}
 
 		this.searchService = new SearchService(this.client);
-		this.graphCache = new GraphCache(this.client);
 		this.contradictionService = new ContradictionService(this.client);
 
 		this.maybeStartIngestService();
@@ -254,11 +252,9 @@ export default class SmartMemoryPlugin extends Plugin {
 					this.statusBar?.setStatus('syncing');
 				} else if (event.type === 'ingest-complete') {
 					this.statusBar?.setLastSync(new Date());
-					this.graphCache?.invalidate();
 					showFirstIngestTour(this);
 				} else if (event.type === 'enrichment-complete') {
 					this.statusBar?.setLastSync(new Date());
-					this.graphCache?.invalidate();
 				} else if (event.type === 'enrichment-timeout') {
 					this.surfaceEnrichmentTimeout(event.path);
 				}

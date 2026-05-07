@@ -2,6 +2,14 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.1] — 2026-05-07 — Obsidian-native graph theming
+
+The embedded `@smartmemory/graph` viewer now matches whatever Obsidian theme the user has loaded — default dark/light, community themes (Minimal, Things, AnuPpuccin), or user CSS snippets.
+
+### Changed
+- **Graph canvas reads Obsidian's live CSS variables.** `GraphView.resolveTheme()` resolves `--graph-node`, `--graph-line`, `--graph-text`, `--background-primary`, and `--interactive-accent` via `getComputedStyle(document.body)` and passes them as a `palette` object to `<GraphExplorer theme={...}>` (new prop in `@smartmemory/graph` 0.2.3). This is the same data path Obsidian's own native graph view uses, so theme parity is automatic — no per-theme mapping needed. Plugin re-renders on the workspace `css-change` event, so theme switches and CSS-snippet edits propagate live. Other consumers of the shared package (web, studio, insights) pass no `theme` and are unaffected.
+- **Graph chrome adopts Obsidian CSS variables.** New rules in `src/styles.base.css`, scoped under `.smartmemory-graph-view`, redirect Tailwind slate/gray utilities to `--background-primary`/`--background-secondary`/`--text-normal`/`--background-modifier-border` so toolbars, panels, and search controls follow the active Obsidian theme.
+
 ## [0.2.0] — 2026-04-30 — DIST-OBSIDIAN-LITE-1: zero-Docker install via smartmemory daemon
 
 The plugin now works end-to-end against `smartmemory daemon` (DIST-DAEMON-1), so users can install with `pip install smartmemory && smartmemory daemon start` — no Docker, no FalkorDB+Redis+Mongo. See [`smart-memory-docs/docs/features/DIST-OBSIDIAN-LITE-1/`](https://github.com/smart-memory/smart-memory-docs/tree/main/docs/features/DIST-OBSIDIAN-LITE-1) for the full design + blueprint + report.

@@ -64,6 +64,52 @@ export class GraphView extends ItemView {
 		this.registerEvent(
 			this.plugin.app.workspace.on('active-leaf-change', () => this.render()),
 		);
+
+		// Re-render when Obsidian's color scheme toggles. `css-change` fires
+		// for both the Obsidian theme switcher and OS-level light/dark
+		// changes that propagate through Obsidian — it's the canonical hook.
+		this.registerEvent(
+			this.plugin.app.workspace.on('css-change', () => this.render()),
+		);
+	}
+
+	/**
+	 * Build a theme object from Obsidian's live CSS variables. This is
+	 * the same data path Obsidian's own native graph view uses, so the
+	 * embedded @smartmemory/graph viewer adopts whatever theme the user
+	 * has loaded (default dark/light, Minimal, Things, AnuPpuccin, etc.)
+	 * with no further mapping.
+	 *
+	 * `--graph-node`, `--graph-line`, `--graph-text` are the canonical
+	 * graph-view variables. We fall back to `--text-muted` /
+	 * `--background-modifier-border` / `--text-normal` for themes that
+	 * skip the graph-specific tokens. `getComputedStyle` resolves the
+	 * variables in their current cascaded form, so a community-theme
+	 * accent or a user CSS snippet flows through automatically.
+	 *
+	 * Other consumers of @smartmemory/graph (web/studio/insights) pass
+	 * no `theme` prop and render with the original semantic palette.
+	 */
+	private resolveTheme(): {
+		mode: 'dark' | 'light';
+		palette: { node: string; edge: string; label: string; labelOutline: string; selectionBorder: string };
+	} {
+		const isDark = document.body.classList.contains('theme-dark');
+		const cs = getComputedStyle(document.body);
+		const cssVar = (name: string, fallback: string): string => {
+			const v = cs.getPropertyValue(name).trim();
+			return v || fallback;
+		};
+		return {
+			mode: isDark ? 'dark' : 'light',
+			palette: {
+				node: cssVar('--graph-node', cssVar('--text-muted', '#888')),
+				edge: cssVar('--graph-line', cssVar('--background-modifier-border', '#666')),
+				label: cssVar('--graph-text', cssVar('--text-normal', '#eee')),
+				labelOutline: cssVar('--background-primary', isDark ? '#202020' : '#ffffff'),
+				selectionBorder: cssVar('--interactive-accent', isDark ? '#a0a0a0' : '#202020'),
+			},
+		};
 	}
 
 	async onClose(): Promise<void> {
@@ -89,6 +135,7 @@ export class GraphView extends ItemView {
 		this.reactRoot.render(
 			createElement(GraphExplorer, {
 				adapter,
+				theme: this.resolveTheme(),
 				onNodeOpen: (node: any) => this.openVaultFileForNode(node),
 				// Hide the selection toolbar (Move / Isolate / Delete) inside
 				// Obsidian. The Delete action mutates SmartMemory across all

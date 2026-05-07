@@ -540,3 +540,56 @@
 	color: var(--text-error, #e25c5c);
 	border: 1px dashed var(--text-error, #e25c5c);
 }
+
+/* === Graph-view chrome theming (Obsidian-native) ===
+ * Scoped under .smartmemory-graph-view so it only affects the embedded
+ * @smartmemory/graph viewer inside this plugin. Web/Studio/Insights are
+ * unaffected — they don't load this stylesheet at all.
+ *
+ * Cytoscape canvas colors are themed via the JS `theme` prop in
+ * graph-view.tsx (see resolveTheme). These rules cover the *chrome*
+ * — toolbar, panels, search, filters — by adopting Obsidian's own
+ * CSS variables so the surface follows the active theme (light/dark,
+ * community themes, accent color).
+ */
+.smartmemory-graph-view {
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+
+.smartmemory-graph-view .cytoscape-container {
+	background: var(--background-primary);
+}
+
+/* Panels and bars — anywhere the shared component uses slate / gray
+ * Tailwind utilities, redirect to Obsidian variables. The ::before and
+ * specific selectors aim at the structural classes used by Toolbar,
+ * SearchBar, FilterPanel, DetailPanel, OperationsBar, OriginLegend.
+ */
+.smartmemory-graph-view [class*="bg-slate-"],
+.smartmemory-graph-view [class*="bg-gray-"],
+.smartmemory-graph-view [class*="bg-zinc-"] {
+	background-color: var(--background-secondary) !important;
+}
+
+.smartmemory-graph-view [class*="text-slate-"],
+.smartmemory-graph-view [class*="text-gray-"] {
+	color: var(--text-normal) !important;
+}
+
+.smartmemory-graph-view [class*="border-slate-"],
+.smartmemory-graph-view [class*="border-gray-"] {
+	border-color: var(--background-modifier-border) !important;
+}
+
+.smartmemory-graph-view input,
+.smartmemory-graph-view select,
+.smartmemory-graph-view textarea {
+	background: var(--background-primary);
+	color: var(--text-normal);
+	border-color: var(--background-modifier-border);
+}
+
+.smartmemory-graph-view button:hover {
+	background-color: var(--background-modifier-hover);
+}

@@ -2,6 +2,14 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.2] — 2026-05-07 — Preserve per-type node colors when theming
+
+### Fixed
+- **Restore semantic node colors.** 0.2.1 collapsed memory/entity/grounding fills to a single `--graph-node` color, which made the legend (OriginLegend, FilterPanel) misleading — the swatches show per-type colors but the canvas painted everything grey. `resolveTheme()` no longer sets `palette.node`, so the per-type semantic palette is preserved. Edge color, label color, label outline, and selection border still come from Obsidian's CSS variables, so chrome continues to follow the active theme.
+
+### Distribution
+- Added `versions.json` entries for 0.2.1 and 0.2.2 so the Obsidian community plugin registry doesn't reject them as missing-version. Note: prior to this round, GitHub Releases were only cut up to 0.1.14 — 0.2.0 + 0.2.1 + 0.2.2 still need releases pushed manually (or via a future workflow) before community-registry users see them.
+
 ## [0.2.1] — 2026-05-07 — Obsidian-native graph theming
 
 The embedded `@smartmemory/graph` viewer now matches whatever Obsidian theme the user has loaded — default dark/light, community themes (Minimal, Things, AnuPpuccin), or user CSS snippets.

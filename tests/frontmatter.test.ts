@@ -60,43 +60,60 @@ describe('frontmatter helpers', () => {
 			expect(frontmatter.smartmemory_id).toBeUndefined();
 		});
 
-		it('writes entities only when enrichEntities is true', async () => {
-			await writeSmartMemoryFrontmatter(mockApp, mockFile, {
-				id: 'item-1',
-				entities: [{ name: 'Asimov', type: 'Person' }],
-			}, DEFAULT_SETTINGS);
-
-			expect(frontmatter.smartmemory_entities).toEqual(['Asimov (Person)']);
-		});
-
-		it('skips entities when enrichEntities is false', async () => {
-			const settings = { ...DEFAULT_SETTINGS, enrichEntities: false };
+		it('writes entities when writeFrontmatterEnrichment is true', async () => {
+			const settings = { ...DEFAULT_SETTINGS, writeFrontmatterEnrichment: true };
 			await writeSmartMemoryFrontmatter(mockApp, mockFile, {
 				id: 'item-1',
 				entities: [{ name: 'Asimov', type: 'Person' }],
 			}, settings);
 
+			expect(frontmatter.smartmemory_entities).toEqual(['Asimov (Person)']);
+		});
+
+		it('skips entities when writeFrontmatterEnrichment is false (default)', async () => {
+			await writeSmartMemoryFrontmatter(mockApp, mockFile, {
+				id: 'item-1',
+				entities: [{ name: 'Asimov', type: 'Person' }],
+			}, DEFAULT_SETTINGS);
+
 			expect(frontmatter.smartmemory_entities).toBeUndefined();
 		});
 
-		it('writes memory_type when enabled', async () => {
+		it('writes memory_type when enrichment master toggle is on', async () => {
+			const settings = { ...DEFAULT_SETTINGS, writeFrontmatterEnrichment: true };
 			await writeSmartMemoryFrontmatter(mockApp, mockFile, {
 				id: 'item-1',
 				memoryType: 'semantic',
-			}, DEFAULT_SETTINGS);
+			}, settings);
 
 			expect(frontmatter.smartmemory_type).toBe('semantic');
 		});
 
-		it('writes sync timestamp when enabled', async () => {
+		it('writes sync timestamp when enrichment master toggle is on', async () => {
+			const settings = { ...DEFAULT_SETTINGS, writeFrontmatterEnrichment: true };
 			const before = Date.now();
 			await writeSmartMemoryFrontmatter(mockApp, mockFile, {
 				id: 'item-1',
-			}, DEFAULT_SETTINGS);
+			}, settings);
 
 			expect(frontmatter.smartmemory_last_sync).toBeDefined();
 			const ts = new Date(frontmatter.smartmemory_last_sync).getTime();
 			expect(ts).toBeGreaterThanOrEqual(before);
+		});
+
+		it('skips all enrichment fields when master toggle is off and only id stays', async () => {
+			await writeSmartMemoryFrontmatter(mockApp, mockFile, {
+				id: 'item-1',
+				memoryType: 'semantic',
+				entities: [{ name: 'Asimov', type: 'Person' }],
+				relations: ['Asimov authored Foundation'],
+			}, DEFAULT_SETTINGS);
+
+			expect(frontmatter.smartmemory_id).toBe('item-1');
+			expect(frontmatter.smartmemory_type).toBeUndefined();
+			expect(frontmatter.smartmemory_entities).toBeUndefined();
+			expect(frontmatter.smartmemory_relations).toBeUndefined();
+			expect(frontmatter.smartmemory_last_sync).toBeUndefined();
 		});
 
 		it('all smartmemory_ fields use prefix isolation (no collision)', async () => {

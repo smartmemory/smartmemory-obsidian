@@ -28,16 +28,13 @@ export async function writeSmartMemoryFrontmatter(
 			if (settings.writeFrontmatterId) {
 				fm.smartmemory_id = data.id;
 			}
-			if (settings.enrichMemoryType && data.memoryType) {
-				fm.smartmemory_type = data.memoryType;
-			}
-			if (settings.enrichEntities && data.entities) {
-				fm.smartmemory_entities = data.entities.map(formatEntity);
-			}
-			if (settings.enrichRelations && data.relations) {
-				fm.smartmemory_relations = data.relations.map(formatRelation);
-			}
-			if (settings.enrichSyncTimestamp) {
+			// Display fields gated behind a single master toggle. Useful for
+			// users querying their vault with Dataview/Bases; off by default
+			// to keep notes uncluttered.
+			if (settings.writeFrontmatterEnrichment) {
+				if (data.memoryType) fm.smartmemory_type = data.memoryType;
+				if (data.entities) fm.smartmemory_entities = data.entities.map(formatEntity);
+				if (data.relations) fm.smartmemory_relations = data.relations.map(formatRelation);
 				fm.smartmemory_last_sync = new Date().toISOString();
 			}
 		});

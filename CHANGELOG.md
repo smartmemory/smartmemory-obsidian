@@ -2,6 +2,17 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.5] — 2026-05-07 — DIST-OBSIDIAN-PANELS-1 Phase 1: frontmatter master toggle
+
+### Changed
+- **Replaced four enrichment toggles with one master switch.** `enrichEntities`, `enrichRelations`, `enrichMemoryType`, and `enrichSyncTimestamp` collapse into `writeFrontmatterEnrichment`. `writeFrontmatterId` stays separate — it's load-bearing for note ↔ memory linking, contradiction detection, mapping recovery on import, and every right-panel view. New default for the enrichment toggle: **OFF** (clean YAML for new installs).
+- **Non-destructive migration on first load.** If saved settings carried any prior `enrich*: true`, that intent migrates to the master ON. Otherwise, scan vault frontmatter — if any note has `smartmemory_entities`, default ON to preserve existing Dataview/Bases dashboards. Fresh installs and clean opt-outs default OFF. Migration is one-shot, gated by `migratedFrontmatterToggle`.
+- **Settings UI consolidated.** Two toggle rows under the new "Frontmatter" section instead of five. New copy explains the Dataview/Bases use case explicitly so users understand the trade-off.
+
+### Tests
+- 5 new migration decision-rule tests in `tests/frontmatter-migration.test.ts`.
+- Updated existing frontmatter and ingest tests to use the master toggle. 126/126 green.
+
 ## [0.2.4] — 2026-05-07 — Hide OriginLegend in graph view
 
 ### Changed

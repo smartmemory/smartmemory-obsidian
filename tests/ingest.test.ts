@@ -76,7 +76,11 @@ describe('IngestService.ingestFile', () => {
 			client,
 			app,
 			mappingStore: store,
-			settings: DEFAULT_SETTINGS,
+			// Enrichment-write tests below assert on smartmemory_entities /
+			// smartmemory_type — toggle the master flag on so the write path
+			// fires. Default OFF (clean install) is exercised by the empty-
+			// frontmatter tests in frontmatter.test.ts.
+			settings: { ...DEFAULT_SETTINGS, writeFrontmatterEnrichment: true },
 			pollDelayMs: 0,           // disable real timers in tests
 			pollMaxAttempts: 3,
 			onEvent: (e) => events.push(e),

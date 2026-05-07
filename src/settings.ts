@@ -193,14 +193,21 @@ export class SmartMemorySettingTab extends PluginSettingTab {
 					this.debouncedSave();
 				}));
 
-		// Enrichment
-		containerEl.createEl('h3', { text: 'Enrichment' });
+		// Frontmatter
+		containerEl.createEl('h3', { text: 'Frontmatter' });
 
-		this.addToggle(containerEl, 'Write smartmemory_id', 'Adds the SmartMemory item ID to frontmatter (visible in published vaults)', 'writeFrontmatterId');
-		this.addToggle(containerEl, 'Write entities', 'Add extracted entities to frontmatter', 'enrichEntities');
-		this.addToggle(containerEl, 'Write relations', 'Add extracted relations to frontmatter', 'enrichRelations');
-		this.addToggle(containerEl, 'Write memory type', 'Add memory type classification to frontmatter', 'enrichMemoryType');
-		this.addToggle(containerEl, 'Write sync timestamp', 'Add last sync timestamp to frontmatter', 'enrichSyncTimestamp');
+		this.addToggle(
+			containerEl,
+			'Write smartmemory_id',
+			'Adds the SmartMemory item ID to frontmatter. Required for note ↔ memory linking, contradiction detection, and the right-panel context views to find the right SmartMemory record. Turn off only if you accept losing those features.',
+			'writeFrontmatterId',
+		);
+		this.addToggle(
+			containerEl,
+			'Write enrichment to frontmatter',
+			'Adds extracted entities, relations, memory type, and sync timestamp to each note\'s YAML. Useful if you want to query your vault with Dataview or Bases. Off by default for new installs; on automatically for vaults that already have SmartMemory enrichment data so existing dashboards keep working.',
+			'writeFrontmatterEnrichment',
+		);
 
 		// Suggestions
 		containerEl.createEl('h3', { text: 'Inline Suggestions' });

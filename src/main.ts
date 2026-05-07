@@ -87,6 +87,7 @@ export default class SmartMemoryPlugin extends Plugin {
 		// metadataCache is already warm by onLayoutReady.
 		this.app.workspace.onLayoutReady(() => {
 			void this.backfillMappingsFromVault();
+			void this.migrateFrontmatterToggle();
 		});
 
 		this.registerView(SEARCH_VIEW_TYPE, (leaf) => new SearchView(leaf, this));
@@ -409,6 +410,57 @@ export default class SmartMemoryPlugin extends Plugin {
 			console.log(`[smartmemory] backfilled ${changed} mapping(s) from vault frontmatter`);
 			await this.saveMappings();
 		}
+	}
+
+	/**
+	 * One-time migration from the four `enrich*` flags to the single
+	 * `writeFrontmatterEnrichment` master toggle (DIST-OBSIDIAN-PANELS-1).
+	 *
+	 * Decision rule:
+	 *   1. If a prior `enrich*` flag was true in saved data, that's user
+	 *      intent — turn the master ON.
+	 *   2. Otherwise, scan vault frontmatter: if any note has
+	 *      `smartmemory_entities`, the user has accumulated data that may
+	 *      drive Dataview / Bases dashboards — turn ON to preserve them.
+	 *   3. Otherwise (fresh install or clean opt-out) — leave OFF.
+	 *
+	 * The old `enrich*` keys persist in `data.json` after migration since
+	 * we never write them back. They sit dormant; deleting them is not
+	 * worth the extra branch.
+	 */
+	private async migrateFrontmatterToggle(): Promise<void> {
+		if (this.settings.migratedFrontmatterToggle) return;
+
+		// Cast: the old keys are removed from the type but may still be in
+		// data.json from prior versions. Read defensively.
+		const prior: Record<string, unknown> = this.settings as unknown as Record<string, unknown>;
+		const priorOptIn =
+			prior.enrichEntities === true ||
+			prior.enrichRelations === true ||
+			prior.enrichMemoryType === true ||
+			prior.enrichSyncTimestamp === true;
+
+		let master = priorOptIn;
+		if (!master) {
+			master = this.vaultHasEnrichmentFrontmatter();
+		}
+
+		this.settings.writeFrontmatterEnrichment = master;
+		this.settings.migratedFrontmatterToggle = true;
+		await this.saveSettings();
+		console.log(
+			`[smartmemory] migrated frontmatter toggle: writeFrontmatterEnrichment=${master} ` +
+			`(priorOptIn=${priorOptIn})`,
+		);
+	}
+
+	/** True if any markdown file in the vault has `smartmemory_entities` in frontmatter. */
+	private vaultHasEnrichmentFrontmatter(): boolean {
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+			if (fm && fm.smartmemory_entities !== undefined) return true;
+		}
+		return false;
 	}
 
 	/** All persistence goes through this serialized chain so concurrent calls

@@ -126,7 +126,14 @@ export class SearchView extends ItemView {
 			});
 			// Discard stale results
 			if (seq !== this.requestSeq) return;
-			this.renderResults(results);
+			// Drop empty-content rows. These are legacy ingests from before
+			// `services/ingest.ts:121` started rejecting empty content (e.g.
+			// YAML-only notes from 0.1.x). They still match by entity graph
+			// or by their pre-strip embedding, but render as "(untitled)"
+			// with a blank snippet — useless to the user. The
+			// "purge-empty-memories" command cleans them up server-side.
+			const visible = results.filter((r) => (r.content || '').trim().length > 0);
+			this.renderResults(visible);
 		} catch (err) {
 			if (seq !== this.requestSeq) return;
 			if (handleQuotaError(this.plugin.app, err, { isLite: this.plugin.isLite })) {

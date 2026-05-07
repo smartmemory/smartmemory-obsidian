@@ -41,7 +41,9 @@ export class RecallModal extends Modal {
 				excludeOriginPrefixes: RECALL_EXCLUDE_ORIGIN_PREFIXES,
 				dedupeContent: true,
 			});
-			this.renderResults(resultsEl, results);
+			// Filter empty-content legacy items — see search-view.ts.
+			const visible = results.filter((r) => (r.content || '').trim().length > 0);
+			this.renderResults(resultsEl, visible);
 		} catch (err) {
 			resultsEl.empty();
 			resultsEl.setText(`Search failed: ${err instanceof Error ? err.message : String(err)}`);

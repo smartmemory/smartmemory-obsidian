@@ -126,6 +126,14 @@ export default class SmartMemoryPlugin extends Plugin {
 		});
 
 		this.addCommand({
+			id: 'smartmemory-purge-empty-memories',
+			name: 'Purge empty-content memories (legacy YAML-only ingests)',
+			callback: async () => {
+				await this.purgeEmptyContentMemories();
+			},
+		});
+
+		this.addCommand({
 			id: 'smartmemory-diagnose-loop',
 			name: 'Diagnose ingest loop (counts memories, prints to console)',
 			callback: async () => {
@@ -565,6 +573,79 @@ export default class SmartMemoryPlugin extends Plugin {
 
 		new Notice(
 			`SmartMemory purge complete: deleted ${succeeded}/${toDelete.length} server memories${failed ? ` (${failed} failed)` : ''}; cleared local frontmatter.`,
+			10000,
+		);
+	}
+
+	/**
+	 * Find and delete server-side memories whose `content` is empty after
+	 * trimming. These are legacy ingests from before `services/ingest.ts:121`
+	 * began rejecting empty content (e.g. YAML-only notes from 0.1.x).
+	 *
+	 * They surface in search/recall as "(untitled)" rows because the entity
+	 * graph and embeddings still link to them, but the rendered content is
+	 * blank — useless to the user. Render-time filtering hides them; this
+	 * command removes them so the workspace stops carrying dead weight.
+	 *
+	 * Local note frontmatter is NOT touched — empty server items have no
+	 * mapped local note in the typical case (their source was lost when
+	 * the YAML-only file was edited or deleted).
+	 */
+	private async purgeEmptyContentMemories(): Promise<void> {
+		const client = this.client;
+		if (!client) {
+			new Notice('SmartMemory: not connected — set API key first.');
+			return;
+		}
+		new Notice('SmartMemory: scanning for empty-content memories…', 5000);
+
+		const toDelete: string[] = [];
+		let offset = 0;
+		const pageSize = 200;
+		while (true) {
+			let page: any;
+			try {
+				page = await (client as any).memories.list({ limit: pageSize, offset });
+			} catch (err) {
+				console.error('[smartmemory] empty-purge list failed', err);
+				new Notice('SmartMemory: empty-purge aborted — list failed (see console).');
+				return;
+			}
+			const items: any[] = Array.isArray(page) ? page : (page?.items || []);
+			for (const item of items) {
+				const content: string = typeof item.content === 'string' ? item.content : '';
+				if (content.trim().length === 0) {
+					toDelete.push(item.item_id);
+				}
+			}
+			if (items.length < pageSize) break;
+			offset += items.length;
+		}
+
+		if (toDelete.length === 0) {
+			new Notice('SmartMemory: no empty-content memories found.');
+			return;
+		}
+
+		console.log('[smartmemory] purging', toDelete.length, 'empty-content memories');
+		let succeeded = 0;
+		let failed = 0;
+		for (const id of toDelete) {
+			try {
+				await (client as any).memories.delete(id);
+				succeeded++;
+				// Drop any local mapping so search/recall caches don't stall on it.
+				const filePath = this.mappingStore.getFilePath(id);
+				if (filePath) this.mappingStore.handleDelete(filePath);
+			} catch (err) {
+				failed++;
+				console.warn('[smartmemory] empty-purge delete failed', id, err);
+			}
+		}
+		await this.saveMappings();
+
+		new Notice(
+			`SmartMemory: deleted ${succeeded}/${toDelete.length} empty-content memories${failed ? ` (${failed} failed)` : ''}.`,
 			10000,
 		);
 	}

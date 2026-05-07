@@ -2,6 +2,14 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.8] — 2026-05-08 — Hide & purge legacy empty-content memories
+
+### Fixed
+- **Search and recall no longer render `(untitled)` rows.** Legacy ingests from before `services/ingest.ts:121` started rejecting empty content (e.g. YAML-only notes from 0.1.x) created server-side memories whose `content` field is empty after stripping. They still match search by entity graph or pre-strip embedding, but their rendered title is "(untitled)" with a blank snippet — useless. `SearchView` and `RecallModal` now filter these rows at render time.
+
+### Added
+- **Command: "Purge empty-content memories (legacy YAML-only ingests)".** Pages through `/memory/list`, finds items where `content.trim()` is empty, and deletes them server-side. Surgical alternative to "Danger: purge all Obsidian-origin memories" — only removes the dead orphans, keeps real notes.
+
 ## [0.2.7] — 2026-05-07 — DIST-OBSIDIAN-PANELS-1 Phase 4: Supersessions panel
 
 ### Added

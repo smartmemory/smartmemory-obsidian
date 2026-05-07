@@ -2,6 +2,21 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.7] — 2026-05-07 — DIST-OBSIDIAN-PANELS-1 Phase 4: Supersessions panel
+
+### Added
+- **`SupersessionsPanel`** (`src/views/supersessions-panel.ts`) — right-sidebar list of every supersession relationship for the active note's memory ("supersedes" / "is superseded by"). Builds on `/memory/{id}/neighbors` filtered for SUPERSEDES / SUPERSEDED_BY edges with direction. Adds value the existing contradiction banner doesn't expose: the banner returns only the FIRST finding via `checkSupersession()`; this panel lists all of them. Command: `SmartMemory: Open supersessions sidebar`.
+- Pure helper `extractSupersessionRows()` extracted for unit testing — encodes the SUPERSEDES vs SUPERSEDED_BY × outgoing vs incoming asymmetry rules.
+
+### Pivoted from plan
+- The plan called for a "Contradictions panel" reading `/memory/{id}/contradictions`. That endpoint does not exist in the service — what the existing banner calls "contradictions" is supersession via `/neighbors`. Renamed to match reality.
+
+### Tests
+- 6 new `extractSupersessionRows` tests covering canonical SUPERSEDES, legacy SUPERSEDED_BY, missing-direction skip, unrelated link types, multiple-rows pass-through. 139/139 green.
+
+### Deferred
+- Phase 5 DecisionsPanel — needs service-side `/decisions?cites_memory_id=` filter first. Filed as DIST-OBSIDIAN-DECISIONS-PANEL-1 follow-up.
+
 ## [0.2.6] — 2026-05-07 — DIST-OBSIDIAN-PANELS-1 Phase 2 & 3: Lineage panel
 
 ### Added

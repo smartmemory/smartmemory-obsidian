@@ -3,6 +3,7 @@ import type SmartMemoryPlugin from '../main';
 import { SEARCH_VIEW_TYPE } from '../views/search-view';
 import { ENTITY_VIEW_TYPE } from '../views/entity-view';
 import { LINEAGE_PANEL_TYPE } from '../views/lineage-panel';
+import { SUPERSESSIONS_PANEL_TYPE } from '../views/supersessions-panel';
 import { RecallModal } from '../views/recall-modal';
 
 async function openInRightSidebar(plugin: SmartMemoryPlugin, viewType: string): Promise<void> {
@@ -37,6 +38,12 @@ export function registerSearchCommands(plugin: SmartMemoryPlugin): void {
 		id: 'smartmemory-open-lineage-panel',
 		name: 'Open lineage sidebar',
 		callback: () => openInRightSidebar(plugin, LINEAGE_PANEL_TYPE),
+	});
+
+	plugin.addCommand({
+		id: 'smartmemory-open-supersessions-panel',
+		name: 'Open supersessions sidebar',
+		callback: () => openInRightSidebar(plugin, SUPERSESSIONS_PANEL_TYPE),
 	});
 
 	plugin.addCommand({

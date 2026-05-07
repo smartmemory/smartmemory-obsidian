@@ -620,3 +620,45 @@
 .smartmemory-lineage-panel h3 {
 	margin-top: 0;
 }
+
+/* === Supersessions panel === */
+.smartmemory-supersessions-panel {
+	padding: 0.75em;
+}
+
+.smartmemory-supersessions-list {
+	list-style: none;
+	padding-left: 0;
+}
+
+.smartmemory-supersession-row {
+	margin-bottom: 0.75em;
+	padding: 0.5em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+}
+
+.smartmemory-supersession-supersedes,
+.smartmemory-supersession-superseded {
+	display: inline-block;
+	font-size: 0.75em;
+	padding: 0.1em 0.4em;
+	border-radius: 3px;
+	margin-bottom: 0.25em;
+}
+
+.smartmemory-supersession-supersedes {
+	background-color: var(--color-green, #6c9);
+	color: var(--text-on-accent, #fff);
+}
+
+.smartmemory-supersession-superseded {
+	background-color: var(--color-orange, #c95);
+	color: var(--text-on-accent, #fff);
+}
+
+.smartmemory-supersession-snippet {
+	font-size: 0.9em;
+	color: var(--text-normal);
+	margin-bottom: 0.25em;
+}

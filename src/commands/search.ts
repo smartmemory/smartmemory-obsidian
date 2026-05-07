@@ -2,6 +2,7 @@ import { MarkdownView, Notice } from 'obsidian';
 import type SmartMemoryPlugin from '../main';
 import { SEARCH_VIEW_TYPE } from '../views/search-view';
 import { ENTITY_VIEW_TYPE } from '../views/entity-view';
+import { LINEAGE_PANEL_TYPE } from '../views/lineage-panel';
 import { RecallModal } from '../views/recall-modal';
 
 async function openInRightSidebar(plugin: SmartMemoryPlugin, viewType: string): Promise<void> {
@@ -30,6 +31,12 @@ export function registerSearchCommands(plugin: SmartMemoryPlugin): void {
 		id: 'smartmemory-open-entities',
 		name: 'Open entity backlinks sidebar',
 		callback: () => openInRightSidebar(plugin, ENTITY_VIEW_TYPE),
+	});
+
+	plugin.addCommand({
+		id: 'smartmemory-open-lineage-panel',
+		name: 'Open lineage sidebar',
+		callback: () => openInRightSidebar(plugin, LINEAGE_PANEL_TYPE),
 	});
 
 	plugin.addCommand({

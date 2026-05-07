@@ -10,12 +10,14 @@ import { MappingStore } from './bridge/mapping-store';
 import { IngestService } from './services/ingest';
 import { SearchService } from './services/search';
 import { ContradictionService } from './services/contradiction';
+import { PerIdCache } from './services/per-id-cache';
 import { registerIngestCommands } from './commands/ingest';
 import { registerSearchCommands } from './commands/search';
 import { registerAutolinkCommand } from './commands/autolink';
 import { SearchView, SEARCH_VIEW_TYPE } from './views/search-view';
 import { EntityView, ENTITY_VIEW_TYPE } from './views/entity-view';
 import { GraphView, GRAPH_VIEW_TYPE } from './views/graph-view';
+import { LineagePanel, LINEAGE_PANEL_TYPE } from './views/lineage-panel';
 import { ContradictionBanner } from './enrichers/contradiction';
 import { InlineSuggestions } from './enrichers/suggestions';
 import { VaultEvents } from './services/vault-events';
@@ -33,6 +35,9 @@ export default class SmartMemoryPlugin extends Plugin {
 	contradictionBanner: ContradictionBanner | null = null;
 	inlineSuggestions: InlineSuggestions | null = null;
 	vaultEvents: VaultEvents | null = null;
+	/** Shared per-id endpoint cache used by right-panel views to coordinate
+	 *  fetches and avoid N round trips per active-leaf change. */
+	panelCache: PerIdCache = new PerIdCache();
 	/** DIST-OBSIDIAN-LITE-1: set by health probe on each (re)connection.
 	 * Drives UI affordances — onboarding radio default, "Sync to cloud"
 	 * affordance copy, hidden API key field, etc.
@@ -93,6 +98,7 @@ export default class SmartMemoryPlugin extends Plugin {
 		this.registerView(SEARCH_VIEW_TYPE, (leaf) => new SearchView(leaf, this));
 		this.registerView(ENTITY_VIEW_TYPE, (leaf) => new EntityView(leaf, this));
 		this.registerView(GRAPH_VIEW_TYPE, (leaf) => new GraphView(leaf, this));
+		this.registerView(LINEAGE_PANEL_TYPE, (leaf) => new LineagePanel(leaf, this));
 
 		this.addCommand({
 			id: 'smartmemory-open-graph',

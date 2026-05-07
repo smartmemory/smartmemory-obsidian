@@ -2,6 +2,16 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.6] — 2026-05-07 — DIST-OBSIDIAN-PANELS-1 Phase 2 & 3: Lineage panel
+
+### Added
+- **`SmartMemoryPanelBase`** (`src/views/panel-base.ts`) — abstract `ItemView` capturing the shared shape every right-panel view needs: follow active leaf, read `smartmemory_id`, increment a `refreshSeq` so stale fetches drop, render error/empty/loading states uniformly. Subclasses implement only `render(root, memoryId, seq)`.
+- **`PerIdCache`** (`src/services/per-id-cache.ts`) — keyed `(memoryId, endpoint)` cache with 30s TTL and concurrent-call de-duplication. Multiple panels open simultaneously make exactly one request per id+endpoint per refresh window. Mounted as `plugin.panelCache`. Failed fetches are dropped from the cache so retries work; resolved values reused.
+- **`LineagePanel`** (`src/views/lineage-panel.ts`) — right-sidebar timeline of a memory's derivation chain (`/memory/{id}/lineage`). Follows the active note. Same data path as the existing `LineageModal`; the modal stays for deep-dive use, the panel is the ambient version. Command: `SmartMemory: Open lineage sidebar`.
+
+### Tests
+- 7 new `PerIdCache` tests covering concurrent de-dup, TTL, error retry, key isolation, and selective invalidation. 133/133 green.
+
 ## [0.2.5] — 2026-05-07 — DIST-OBSIDIAN-PANELS-1 Phase 1: frontmatter master toggle
 
 ### Changed

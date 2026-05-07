@@ -594,6 +594,33 @@
 	background-color: var(--background-modifier-hover);
 }
 
+/* === Right-panel base styles (DIST-OBSIDIAN-PANELS-1) === */
+.smartmemory-panel-empty,
+.smartmemory-panel-loading {
+	color: var(--text-muted);
+	padding: 0.75em 0;
+	font-size: 0.9em;
+}
+
+.smartmemory-panel-error {
+	color: var(--text-error);
+	padding: 0.75em 0;
+	font-size: 0.9em;
+}
+
+.smartmemory-panel-error button {
+	margin-top: 0.5em;
+}
+
+/* === Lineage panel === */
+.smartmemory-lineage-panel {
+	padding: 0.75em;
+}
+
+.smartmemory-lineage-panel h3 {
+	margin-top: 0;
+}
+
 .smartmemory-graph-view {
 /* Tailwind directives — content scanning resolves to actual utility classes
  * at build time. Wrapped under .smartmemory-graph-view by the build pipeline

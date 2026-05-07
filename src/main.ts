@@ -155,22 +155,31 @@ export default class SmartMemoryPlugin extends Plugin {
 	private surfaceLoadState(): void {
 		const cfg = this.settings;
 		const hasKey = !!this.resolveApiKey();
-		const parts: string[] = [];
-		if (!hasKey) parts.push('no API key');
-		if (!cfg.apiUrl) parts.push('no API URL');
-		if (!cfg.workspaceId) parts.push('workspace auto-discovering');
-		if (!cfg.autoIngestOnSave) parts.push('auto-ingest-on-save OFF');
-		if (!cfg.autoIngestOnCreate) parts.push('auto-ingest-on-create OFF');
 		// Build-time version, injected by esbuild via `define` from
 		// package.json. Always in sync with manifest.json + versions.json
 		// because the husky pre-commit hook bumps all three together.
 		const BUNDLE_TAG = __SMARTMEMORY_VERSION__;
-		const summary = parts.length === 0
-			? `SmartMemory loaded [${BUNDLE_TAG}] — auto-ingest ON (${cfg.apiUrl})`
-			: `SmartMemory loaded [${BUNDLE_TAG}] — issues: ${parts.join(', ')}`;
-		new Notice(summary, 10000);
-		// Also log so the console captures it for verbatim copy.
+
+		// Hard blockers only — these prevent the plugin from doing anything
+		// useful, so a startup Notice is appropriate. User-configurable flags
+		// (auto-ingest on save/create, workspace auto-discovery) are choices,
+		// not diagnostics, and live in the settings panel + status bar.
+		const blockers: string[] = [];
+		if (!hasKey) blockers.push('no API key');
+		if (!cfg.apiUrl) blockers.push('no API URL');
+
+		if (blockers.length > 0) {
+			new Notice(
+				`SmartMemory [${BUNDLE_TAG}]: ${blockers.join(', ')} — open settings to fix.`,
+				10000,
+			);
+		}
+
+		// Always log full state so support can ask the user to copy the
+		// console line verbatim. /smartmemory diagnose offers the same
+		// readout on demand for users who can't open devtools.
 		console.log('[smartmemory] load state', {
+			version: BUNDLE_TAG,
 			apiUrl: cfg.apiUrl,
 			hasApiKey: hasKey,
 			workspaceId: cfg.workspaceId || '(auto)',

@@ -2,6 +2,12 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.3] — 2026-05-07 — Quieter startup diagnostic
+
+### Changed
+- **Startup `Notice` only fires on hard blockers.** `surfaceLoadState()` previously toasted on every plugin load with a 10-second summary that mixed connection problems (no API key, no API URL) with user configuration choices (auto-ingest-on-save OFF, workspace auto-discovering). Mixing the two trained users to dismiss the toast, which then hid the genuine "no API key" case when it appeared. The toast now fires only when API key or API URL is missing — the user-fixable blockers — and points to the settings panel. Auto-ingest flags belong in the settings UI / status bar, not in a startup popup.
+- **Console log retained.** `console.log('[smartmemory] load state', …)` still runs unconditionally so support can ask users to copy it verbatim. `/smartmemory diagnose` (`main.ts:544`) gives the same on-demand readout for users who can't open devtools. The console payload now includes the bundle version so support tickets always carry it.
+
 ## [0.2.2] — 2026-05-07 — Preserve per-type node colors when theming
 
 ### Fixed

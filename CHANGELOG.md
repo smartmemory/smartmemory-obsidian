@@ -2,6 +2,11 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.4] — 2026-05-07 — Hide OriginLegend in graph view
+
+### Changed
+- **Pass `showOriginLegend={false}` to `<GraphExplorer>`.** The legend overlay floats above the canvas and crowds the narrow pane Obsidian allocates to plugin views. Origin information is still encoded as the node border color/style (legacy = dashed, derived/system = colored borders), so the signal is preserved on the canvas itself. Web/Studio/Insights still show the legend by default. Existing prop on the shared component — no API change.
+
 ## [0.2.3] — 2026-05-07 — Quieter startup diagnostic
 
 ### Changed

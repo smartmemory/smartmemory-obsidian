@@ -136,6 +136,13 @@ export class GraphView extends ItemView {
 			createElement(GraphExplorer, {
 				adapter,
 				theme: this.resolveTheme(),
+				// Hide the OriginLegend overlay in Obsidian — the panel
+				// floats over the canvas and crowds the relatively narrow
+				// pane Obsidian gives plugin views. Origin information is
+				// still encoded as the node border color/style; users who
+				// want the legend back can run /smartmemory diagnose or
+				// view the graph in the web app.
+				showOriginLegend: false,
 				onNodeOpen: (node: any) => this.openVaultFileForNode(node),
 				// Hide the selection toolbar (Move / Isolate / Delete) inside
 				// Obsidian. The Delete action mutates SmartMemory across all

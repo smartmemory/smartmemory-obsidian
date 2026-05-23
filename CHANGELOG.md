@@ -2,6 +2,29 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.10] — 2026-05-23 — Panel-rendering E2E harness (DIST-OBSIDIAN-E2E-1 Tier 1)
+
+### Added
+- **`tests/__mocks__/obsidian.ts` polyfilled with Obsidian-flavored DOM helpers** (`createDiv`, `createEl`, `createSpan`, `empty`, `addClass`, `setText`, `removeClass`, `toggleClass`) on `HTMLElement.prototype`. Idempotent, namespaced under `__sm_obsidian_polyfilled`. `ItemView` stub now constructs a real two-child `containerEl` matching the Obsidian runtime convention.
+- **`tests/harness/panel-harness.ts`** — reusable `panelHarness({ decisions, memories, getMemoryId, settings })` factory + `fakeFile(path)` helper. Returns `{ plugin, mount, setActiveFile, setMemoryId }`. The fake plugin carries a real `PerIdCache` (cache behavior is part of what's verified) plus stubbable `client.decisions.list` / `client.memories.{neighbors,lineage}`. `mount(PanelClass)` constructs the panel, attaches its `containerEl` to a real DOM root, drives `onOpen()`, and returns hooks for `fireLeafChange()` and `refresh()`.
+- **9 end-to-end rendering tests for `DecisionsPanel`** at `tests/decisions-panel-e2e.test.ts`:
+  - empty active-file ⇒ "No active note." + zero API calls
+  - active-file-without-memory-id ⇒ ingest hint + zero API calls
+  - SDK call shape end-to-end (`provenance_memory_id` actually wired, `limit=50` actually passed)
+  - empty server response ⇒ "No decisions derived from this note yet."
+  - multi-decision render ⇒ status pills per status, content snippets, decision-id surface, domain + confidence meta
+  - rejected fetch ⇒ error state with Retry button
+  - active-leaf-change ⇒ re-fetch with new memory id
+  - panelCache dedup ⇒ 3 renders → 1 network call
+  - long content ⇒ truncated to ~120 chars with ellipsis
+
+### Changed
+- **`vitest.config.ts` environment switched from `node` → `jsdom`** so the polyfilled `HTMLElement.prototype` has a real DOM to attach to. Backwards-compatible: full plugin suite 153/153 green after the switch, including the 5 pure-helper `formatCreatedAt` tests and the 6 `extractSupersessionRows` tests.
+
+### Notes
+- Closes the verification gap on `DIST-OBSIDIAN-PANELS-1` Phase 5 (and on all earlier panels for which similar tests can be backfilled — same harness, ~15 min per panel).
+- Tier 2 (Playwright/WebdriverIO against real Obsidian Electron with test vault + plugin installer + CI runners) is filed under `DIST-OBSIDIAN-E2E-1` plan but deferred — multi-day work, only justifiable once Tier 1 misses a real-bug class.
+
 ## [0.2.9] — 2026-05-23 — DecisionsPanel (DIST-OBSIDIAN-PANELS-1 Phase 5)
 
 ### Added

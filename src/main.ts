@@ -19,6 +19,7 @@ import { EntityView, ENTITY_VIEW_TYPE } from './views/entity-view';
 import { GraphView, GRAPH_VIEW_TYPE } from './views/graph-view';
 import { LineagePanel, LINEAGE_PANEL_TYPE } from './views/lineage-panel';
 import { SupersessionsPanel, SUPERSESSIONS_PANEL_TYPE } from './views/supersessions-panel';
+import { DecisionsPanel, DECISIONS_PANEL_TYPE } from './views/decisions-panel';
 import { ContradictionBanner } from './enrichers/contradiction';
 import { InlineSuggestions } from './enrichers/suggestions';
 import { VaultEvents } from './services/vault-events';
@@ -101,6 +102,7 @@ export default class SmartMemoryPlugin extends Plugin {
 		this.registerView(GRAPH_VIEW_TYPE, (leaf) => new GraphView(leaf, this));
 		this.registerView(LINEAGE_PANEL_TYPE, (leaf) => new LineagePanel(leaf, this));
 		this.registerView(SUPERSESSIONS_PANEL_TYPE, (leaf) => new SupersessionsPanel(leaf, this));
+		this.registerView(DECISIONS_PANEL_TYPE, (leaf) => new DecisionsPanel(leaf, this));
 
 		this.addCommand({
 			id: 'smartmemory-open-graph',

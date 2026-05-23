@@ -2,6 +2,18 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.9] — 2026-05-23 — DecisionsPanel (DIST-OBSIDIAN-PANELS-1 Phase 5)
+
+### Added
+- **`SmartMemory decisions` right-sidebar panel** — lists active decisions whose provenance subgraph contains the current note's memory. Driven by the inverse-provenance query shipped in smart-memory-core 0.9.15 / smart-memory-service 0.4.16 (`GET /memory/decisions?provenance_memory_id=`, CORE-DECISION-PROVENANCE-LOOKUP-1). Server-side dual scope gate prevents cross-workspace leakage; unknown or out-of-scope memory ids return an empty list, never 404.
+- New command **"Open decisions sidebar"** (`smartmemory-open-decisions-panel`).
+- `DecisionAPI` shim added to `src/sdk-types.d.ts` for typed access to `client.decisions.list({ provenance_memory_id })`. The runtime SDK accepts arbitrary params via `URLSearchParams` pass-through, so the shim covers the keys we use without locking out future ones.
+
+### Notes
+- Semantics: "derived from" not "cites" — the underlying graph encodes provenance (the LLM-extraction / decision-creation chain), not authorial citation. The empty-state copy reflects that.
+- Click-through to a decision viewer (web modal / inline panel) is a future enhancement; the panel ships read-only with the `decision_id` exposed as a stable handle.
+- Transitive decision-chain provenance (`D2 CAUSED_BY D1 DERIVED_FROM M` returning both) is deferred to follow-up `CORE-DECISION-PROVENANCE-TRANSITIVE-1`; when that ships, this panel picks it up for free with no plugin changes.
+
 ## [0.2.8] — 2026-05-08 — Hide & purge legacy empty-content memories
 
 ### Fixed

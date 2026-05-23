@@ -4,6 +4,7 @@ import { SEARCH_VIEW_TYPE } from '../views/search-view';
 import { ENTITY_VIEW_TYPE } from '../views/entity-view';
 import { LINEAGE_PANEL_TYPE } from '../views/lineage-panel';
 import { SUPERSESSIONS_PANEL_TYPE } from '../views/supersessions-panel';
+import { DECISIONS_PANEL_TYPE } from '../views/decisions-panel';
 import { RecallModal } from '../views/recall-modal';
 
 async function openInRightSidebar(plugin: SmartMemoryPlugin, viewType: string): Promise<void> {
@@ -44,6 +45,12 @@ export function registerSearchCommands(plugin: SmartMemoryPlugin): void {
 		id: 'smartmemory-open-supersessions-panel',
 		name: 'Open supersessions sidebar',
 		callback: () => openInRightSidebar(plugin, SUPERSESSIONS_PANEL_TYPE),
+	});
+
+	plugin.addCommand({
+		id: 'smartmemory-open-decisions-panel',
+		name: 'Open decisions sidebar',
+		callback: () => openInRightSidebar(plugin, DECISIONS_PANEL_TYPE),
 	});
 
 	plugin.addCommand({

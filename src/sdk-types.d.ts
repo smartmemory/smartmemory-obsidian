@@ -25,10 +25,49 @@ declare module 'smartmemory-sdk-js/core' {
 		[key: string]: any;
 	}
 
+	/**
+	 * DecisionAPI shim (DIST-OBSIDIAN-PANELS-1 Phase 5,
+	 * consumes CORE-DECISION-PROVENANCE-LOOKUP-1).
+	 *
+	 * The runtime SDK's `client.decisions.list(params)` accepts arbitrary
+	 * params via `URLSearchParams` pass-through, so any new server query
+	 * params are settable without a code change. We type only the ones we
+	 * use; unrecognized keys are still accepted.
+	 */
+	export interface DecisionListParams {
+		domain?: string;
+		decision_type?: string;
+		min_confidence?: number;
+		limit?: number;
+		/** Inverse-provenance filter (CORE-DECISION-PROVENANCE-LOOKUP-1). */
+		provenance_memory_id?: string;
+		[key: string]: any;
+	}
+
+	export interface DecisionListResponse {
+		decisions: Array<{
+			decision_id: string;
+			content?: string;
+			status?: string;
+			decision_type?: string;
+			confidence?: number;
+			domain?: string;
+			created_at?: string;
+			[key: string]: any;
+		}>;
+		count: number;
+	}
+
+	export interface DecisionAPI {
+		list(params?: DecisionListParams): Promise<DecisionListResponse>;
+		[key: string]: any;
+	}
+
 	export class SmartMemoryClient {
 		constructor(config: SmartMemoryClientConfig);
 		memories: MemoryAPI;
 		graph: GraphAPI;
+		decisions: DecisionAPI;
 		setTeamId(teamId: string): void;
 		getTeamId(): string | null;
 	}

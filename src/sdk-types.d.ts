@@ -15,8 +15,12 @@ declare module 'smartmemory-sdk-js/core' {
 		ingest(payload: { content: string; metadata?: any; origin?: string }): Promise<any>;
 		update(itemId: string, payload: any): Promise<any>;
 		search(payload: any): Promise<any[]>;
-		neighbors(itemId: string): Promise<{ neighbors: any[]; item_id: string }>;
-		lineage(itemId: string): Promise<{ lineage: any[]; depth: number }>;
+		// Match the runtime SDK (smart-memory-sdk-js MemoryAPI.js getNeighbors/
+		// getLineage). Prior `neighbors`/`lineage` declarations were wishful and
+		// caused LineagePanel to silently no-op in production since 0.2.6 —
+		// caught by DIST-OBSIDIAN-E2E-1 harness backfill 2026-05-23.
+		getNeighbors(itemId: string): Promise<{ neighbors: any[]; item_id: string }>;
+		getLineage(itemId: string): Promise<{ lineage: any[]; depth: number }>;
 	}
 
 	export interface GraphAPI {

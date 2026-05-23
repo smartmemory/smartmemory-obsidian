@@ -53,7 +53,13 @@ export class SupersessionsPanel extends SmartMemoryPanelBase {
 		const result = await this.plugin.panelCache.get<NeighborsResponse>(
 			memoryId,
 			'/neighbors',
-			() => (client.memories as any).getNeighbors(memoryId),
+			// `as any` dropped 2026-05-23 when shim was corrected to match
+			// runtime SDK's getNeighbors; the cast had (luckily) been a no-op
+			// here because the method name was already right — but the same
+			// pattern in lineage-panel.ts had `lineage` instead of
+			// `getLineage` and silently no-op'd in production for 2 weeks
+			// (DIST-OBSIDIAN-E2E-1 harness backfill caught it).
+			() => client.memories.getNeighbors(memoryId),
 		);
 		if (seq !== this.refreshSeq) return;
 

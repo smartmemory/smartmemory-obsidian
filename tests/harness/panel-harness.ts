@@ -27,8 +27,12 @@ export interface FakeClient {
 		list: ReturnType<typeof vi.fn>;
 	};
 	memories: {
-		neighbors: ReturnType<typeof vi.fn>;
-		lineage: ReturnType<typeof vi.fn>;
+		// Method names match the runtime SDK (smart-memory-sdk-js MemoryAPI.js).
+		// Earlier draft used `neighbors`/`lineage`; corrected 2026-05-23 when
+		// the harness backfill caught LineagePanel silently no-op'ing in
+		// production from a `lineage` typo bypassed by an `as any` cast.
+		getNeighbors: ReturnType<typeof vi.fn>;
+		getLineage: ReturnType<typeof vi.fn>;
 	};
 }
 
@@ -67,8 +71,8 @@ export function panelHarness(opts: FakePluginOverrides = {}): PanelHarness {
 			...opts.decisions,
 		},
 		memories: {
-			neighbors: vi.fn().mockResolvedValue({ neighbors: [], item_id: 'm1' }),
-			lineage: vi.fn().mockResolvedValue({ lineage: [], depth: 0 }),
+			getNeighbors: vi.fn().mockResolvedValue({ neighbors: [], item_id: 'm1' }),
+			getLineage: vi.fn().mockResolvedValue({ lineage: [], depth: 0 }),
 			...opts.memories,
 		},
 	};

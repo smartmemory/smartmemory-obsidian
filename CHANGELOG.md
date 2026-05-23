@@ -2,6 +2,22 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.11] — 2026-05-23 — Lineage panel fix (caught by harness) + backfill + Tier 2 scaffold
+
+### Fixed
+- **`LineagePanel` was silently no-op'ing in production since 0.2.6 (2026-05-07).** `src/views/lineage-panel.ts` called `(client.memories as any).lineage(memoryId)`, but the runtime SDK (smart-memory-sdk-js MemoryAPI.js) exposes only `getLineage(id)`. The `as any` cast bypassed TypeScript's name check; the runtime call returned `undefined`, awaited to `undefined`, and `Array.isArray(undefined?.lineage)` was always false, so the panel always rendered "No derivation history" regardless of what the server returned. Fixed: call `client.memories.getLineage(memoryId)` and dropped the `as any`. Caught by the DIST-OBSIDIAN-E2E-1 harness backfill — the very first sibling-panel test under the new harness surfaced it.
+- **SDK shim corrected** at `src/sdk-types.d.ts` — `neighbors` / `lineage` declarations replaced with the real runtime names `getNeighbors` / `getLineage`. `SupersessionsPanel`'s `(client.memories as any).getNeighbors(memoryId)` happened to use the right name (lucky); `as any` dropped there too now that the shim is honest.
+
+### Added (DIST-OBSIDIAN-E2E-1-BACKFILL — 2026-05-23)
+- **`tests/lineage-panel-e2e.test.ts`** — 8 end-to-end rendering tests for `LineagePanel` (no-active-file, no-memory-id, SDK call shape, empty server response, multi-item render with memory_type / confidence / content / vault-link, error retry, refresh-on-leaf-change). All 8 green against the fixed implementation.
+- **`tests/supersessions-panel-e2e.test.ts`** — 8 end-to-end rendering tests for `SupersessionsPanel` matching the same shape (no-active-file, no-memory-id, SDK call shape, no-supersession-edges empty state, supersedes+superseded directional row rendering, snippet truncation, error retry, refresh-on-leaf-change). All 8 green.
+
+### Added (DIST-OBSIDIAN-E2E-2 — Tier 2 scaffold)
+- **`tests/e2e-electron/`** — directory + README + Playwright config example for the future Tier 2 real-Obsidian-Electron harness. NOT WIRED — captures the design + deferral rationale + un-defer trigger conditions so a future implementer doesn't re-derive them. ~2-3 days of work to build out; deferred until Tier 1 misses a real-bug class or the plugin matures past Tier-1 coverage.
+
+### Coverage upshot
+- Plugin test suite: **169/169** across 18 files (was 144 across 16 in 0.2.10). Three panels (Decisions, Lineage, Supersessions) now fully covered by E2E rendering tests — DOM render correctness, SDK call shape, lifecycle handling, error paths, cache behavior, refresh-on-leaf-change.
+
 ## [0.2.10] — 2026-05-23 — Panel-rendering E2E harness (DIST-OBSIDIAN-E2E-1 Tier 1)
 
 ### Added

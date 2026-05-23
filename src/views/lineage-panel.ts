@@ -54,7 +54,12 @@ export class LineagePanel extends SmartMemoryPanelBase {
 		const result = await this.plugin.panelCache.get<LineageResponse>(
 			memoryId,
 			'/lineage',
-			() => (client.memories as any).lineage(memoryId),
+			// Was `(client.memories as any).lineage(memoryId)` — wrong method
+			// name; runtime SDK exposes `getLineage`. The `as any` cast hid
+			// the typo from TypeScript and the panel silently rendered the
+			// empty state in production from 0.2.6 (2026-05-07) until 0.2.11
+			// when the DIST-OBSIDIAN-E2E-1 harness caught it 2026-05-23.
+			() => client.memories.getLineage(memoryId),
 		);
 		if (seq !== this.refreshSeq) return;
 

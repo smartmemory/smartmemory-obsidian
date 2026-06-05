@@ -2,3 +2,15 @@ node_modules/
 main.js
 *.js.map
 data.json
+package-lock.json
+
+# Tier 2 E2E (DIST-OBSIDIAN-E2E-2) generated artifacts
+tests/e2e-electron/.obsidian-test-runs/
+tests/e2e-electron/playwright-report/
+tests/e2e-electron/test-results/
+# Plugin binaries are installed into the fixture vault at test time by install-plugin.ts
+tests/e2e-electron/fixture-vault/.obsidian/plugins/
+# Obsidian writes these into the vault on launch — runtime state, not fixture config
+tests/e2e-electron/fixture-vault/.obsidian/workspace.json
+tests/e2e-electron/fixture-vault/.obsidian/workspace-mobile.json
+tests/e2e-electron/fixture-vault/.obsidian/appearance.json

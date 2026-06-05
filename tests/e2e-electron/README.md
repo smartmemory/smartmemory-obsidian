@@ -1,7 +1,14 @@
 # Tier 2 E2E — Real Obsidian Electron Harness
 
-**Status:** SCAFFOLD ONLY (2026-05-23) — wiring is in place, runner is not.
-**Tracked by:** [`DIST-OBSIDIAN-E2E-2`](../../../smart-memory-docs/docs/features/DIST-OBSIDIAN-E2E-1/plan.md#tier-2--deferred-separate-ticket-ifwhen-needed) (slot reserved in the parent feature plan).
+**Status:** BUILT (2026-06-05) — drives the real Obsidian binary; 5 specs green locally.
+**Tracked by:** [`DIST-OBSIDIAN-E2E-2`](../../../smart-memory-docs/docs/features/DIST-OBSIDIAN-E2E-2/plan.md).
+
+```bash
+npm run test:e2e-electron          # all electron specs
+# env: OBSIDIAN_BIN=<path>  override the auto-detected binary
+#      E2E_VERBOSE=1         log every mock-backend request
+#      E2E_SKIP_BUILD=1      skip the plugin rebuild (use existing main.js)
+```
 
 ## Why this exists separately from `tests/`
 
@@ -11,57 +18,50 @@ SDK call shape, lifecycle handling, error paths, cache behavior — about 80%
 of the verification value at ~5% of the engineering cost.
 
 Tier 2 catches the remaining 20% — things that depend on Obsidian's actual
-runtime: Workspace event timing, MetadataCache eviction, Vault file I/O
-ordering, plugin-load-without-console-errors, command-palette registration,
-real keypresses against a real sidebar.
+runtime: Workspace event timing, plugin-load-without-console-errors,
+command-palette registration, real panel reveal in the sidebar, and the
+`active-leaf-change` refresh path against the **real** Workspace (not a stub).
 
-## Why scaffold-only (not built)
+## How it boots Obsidian (the hard part)
 
-Real-Obsidian E2E is multi-day work:
+Obsidian has no `--open-vault` flag and is a hardened packaged app. Two gotchas
+shaped this harness:
 
-1. **Fixture vault** — a committed `fixture-vault/` directory with known notes
-   carrying known `smartmemory_id` frontmatter, plus the .obsidian/ config
-   that pre-enables the plugin (skip first-run flow). Empty placeholder for
-   now in this directory.
-2. **Plugin install script** — copies built `main.js` / `manifest.json` /
-   `styles.css` into `fixture-vault/.obsidian/plugins/smartmemory/` so the
-   test launch sees a pre-installed plugin. One-liner; not built yet.
-3. **Electron launcher** — Playwright via `_electron.launch({ executablePath:
-   <Obsidian>, args: ['--user-data-dir', <tmp>, fixture-vault] })`. Needs the
-   Obsidian binary location resolved per-OS (macOS: `/Applications/Obsidian.
-   app/Contents/MacOS/Obsidian`; Linux: AppImage; Windows: %APPDATA%).
-4. **Driven scenarios** — open command palette, fire commands, assert sidebar
-   contents via accessibility tree. Each scenario ~30 LoC.
-5. **CI** — Linux runner with Xvfb; macOS runner against a downloaded
-   Obsidian release. Both need network for first-launch resource fetch.
+1. **Playwright's `_electron.launch` does not work.** It attaches to the
+   Electron *main* process via the Node inspector (`--inspect`), but Obsidian
+   ships with the `EnableNodeCliInspectArguments` Electron fuse disabled, so
+   `--inspect` is ignored and the launch never connects. Instead, the fixture
+   (`obsidian-app.ts`) **spawns Obsidian with `--remote-debugging-port=0`,
+   parses the `DevTools listening on ws://…` endpoint, and
+   `chromium.connectOverCDP()`s to the renderer** — driving the window as a
+   normal Playwright `Page`.
+2. **Obsidian hot-updates its app layer on boot and relaunches**, which severs
+   the CDP connection. The seeded `<userData>/obsidian.json` sets
+   **`updateDisabled: true`**, pinning the bundled app asar so no update +
+   relaunch happens. The per-run userData dir is also wiped first, so a leftover
+   downloaded `obsidian-<ver>.asar` can't trigger the two-stage installer→app
+   relaunch.
 
-Estimated build effort: **2-3 days** focused work + ongoing flakiness
-management. Defer until either (a) Tier 1 misses a class of real bug, or
-(b) the community-maintained `obsidian-test` package un-stalls and we can
-adopt instead of rolling our own.
+The vault is opened by seeding `<userData>/obsidian.json` with the fixture vault
+registered `open: true`. The plugin is pre-installed (`install-plugin.ts`) and
+pre-configured via `data.json` (apiUrl → local mock, onboarding completed,
+background ingest/sweeps off) written per-run by the fixture.
 
-## What's actually here right now
+## Files
 
-- This `README.md` — captures the design + the deferral rationale so a
-  future implementer doesn't have to re-derive it.
-- `fixture-vault/.gitkeep` — reserves the directory shape that the future
-  launcher script will populate.
-- `playwright.config.example.ts` — a starter Playwright config aimed at
-  Obsidian Electron, comments-only. Becomes the real config when the
-  fixture vault + launcher land.
+| File | Role |
+|---|---|
+| `obsidian-app.ts` | Playwright fixture: spawn Obsidian, connectOverCDP, expose `{ page, consoleErrors, mockRequests, openNote, runCommand, ... }`. |
+| `mock-backend.ts` | ~40-line HTTP mock for the SmartMemory API. Canned data keyed by `provenance_memory_id`. The only network dependency. |
+| `install-plugin.ts` | Build + copy `main.js`/`manifest.json`/`styles.css` into the fixture vault. |
+| `global-setup.ts` | Runs `install-plugin` once before the suite. |
+| `playwright.config.ts` | `testMatch: *.electron.spec.ts`, `workers: 1` (Electron is heavy; serialize). |
+| `fixture-vault/` | Committed test vault. Generated plugin binaries under `.obsidian/plugins/` are gitignored. |
+| `smoke.electron.spec.ts` | Plugin loads into the vault; zero console errors. |
+| `panels.electron.spec.ts` | Commands registered; panel reveals; render + `active-leaf-change` refresh against the real Workspace. |
 
-## When to un-defer
+## Running
 
-Trigger conditions, any of:
-
-1. **Tier 1 missed a real bug.** A production regression that Tier 1 could
-   have caught if extended, but couldn't because it requires real Obsidian
-   runtime behavior. File the bug, then file Tier 2 implementation against
-   it.
-2. **Plugin matures past Tier-1 coverage.** When the plugin has 10+ panels
-   or commands that interact (e.g., recall hotkey → modal → backend call
-   → result render → click-through to vault note), the cross-component
-   timing in real Obsidian becomes the dominant failure surface.
-3. **Upstream tooling improves.** If `obsidian-test` package gets active
-   maintenance, or if Obsidian itself ships a headless mode (currently
-   no), Tier 2 cost drops to <1 day and the trade-off flips.
+Local only, by design — Obsidian has no headless mode, so this is a developer
+gate (`npm run test:e2e-electron`) run on a machine with Obsidian installed, not
+a CI job. Tier 1 (`npm test`, Vitest/jsdom) remains the fast, CI-friendly tier.

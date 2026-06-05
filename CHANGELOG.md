@@ -2,6 +2,28 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.12] — 2026-06-05 — Tier 2 real-Obsidian Electron E2E harness (DIST-OBSIDIAN-E2E-2)
+
+Built out the Tier 2 harness the 0.2.11 scaffold reserved — drives the **real Obsidian
+binary** so the ~20% of behavior Tier 1's jsdom polyfill can't reach is now covered.
+
+### Added (DIST-OBSIDIAN-E2E-2)
+- **`tests/e2e-electron/` real-Obsidian harness**, run under Playwright via `npm run test:e2e-electron`:
+  - **`obsidian-app.ts`** — Playwright fixture that boots the actual Obsidian app. Obsidian disables the `EnableNodeCliInspectArguments` Electron fuse, so Playwright's `_electron.launch` (which needs the Node inspector) can't attach; the fixture instead **spawns Obsidian with `--remote-debugging-port` and `chromium.connectOverCDP()`s to the renderer**, driving the window as a normal `Page`. Boots into a committed fixture vault via a seeded `<userData>/obsidian.json` registry with **`updateDisabled: true`** (pins the bundled app asar so Obsidian doesn't hot-update + relaunch and sever the CDP connection).
+  - **`mock-backend.ts`** — ~40-line HTTP server, the only network dependency; canned decision/lineage/supersession payloads keyed by `provenance_memory_id`. No `api.smartmemory.ai`, no live stack.
+  - **`install-plugin.ts` / `global-setup.ts`** — build the plugin and install `main.js`/`manifest.json`/`styles.css` into the fixture vault; runtime `data.json` (mock URL, onboarding pre-completed, background ingest/sweeps off) is injected per-run by the fixture.
+  - **`fixture-vault/`** — committed test vault (notes with/without `smartmemory_id`, `.obsidian/` base config enabling the plugin). Generated plugin binaries are gitignored.
+  - **`smoke.electron.spec.ts`** (2) + **`panels.electron.spec.ts`** (3): plugin loads with zero console errors, core commands registered in the palette, decisions panel reveals in the right sidebar, and — the keystone — the panel renders mock-backed rows for the active note and **re-queries with the new memory id when the active note changes**, proving the `active-leaf-change` refresh against the *real* Obsidian Workspace (the exact path that shipped broken for ~2 weeks under Tier 1's stub).
+- Local developer gate only (`npm run test:e2e-electron`) — Obsidian has no headless mode, so this tier is not run in CI; Tier 1 (Vitest) remains the CI-friendly tier.
+
+### Changed
+- `vitest.config.ts` excludes `tests/e2e-electron/**` so the Playwright specs never get collected by Vitest.
+- `package-lock.json` removed from version control (per repo policy; now gitignored).
+
+### Coverage upshot
+- Tier 1 (Vitest/jsdom): **169/169** across 18 files — unchanged.
+- Tier 2 (Playwright/real Obsidian): **5/5** specs green locally against the system Obsidian binary.
+
 ## [0.2.11] — 2026-05-23 — Lineage panel fix (caught by harness) + backfill + Tier 2 scaffold
 
 ### Fixed

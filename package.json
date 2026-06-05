@@ -1,6 +1,6 @@
 {
 	"name": "smartmemory-obsidian",
-	"version": "0.2.11",
+	"version": "0.2.12",
 	"description": "SmartMemory plugin for Obsidian",
 	"main": "main.js",
 	"scripts": {
@@ -8,9 +8,11 @@
 		"build": "node esbuild.config.mjs production",
 		"test": "vitest run",
 		"test:watch": "vitest",
+		"test:e2e-electron": "playwright test -c tests/e2e-electron/playwright.config.ts",
 		"prepare": "husky"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.60.0",
 		"@types/jsdom": "^28.0.3",
 		"@types/node": "^22.0.0",
 		"@types/react": "^18.3.0",

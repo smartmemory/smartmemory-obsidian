@@ -12,9 +12,27 @@ declare module 'smartmemory-sdk-js/core' {
 	export interface MemoryAPI {
 		list(params?: { limit?: number; offset?: number }): Promise<{ items: any[]; total: number }>;
 		get(itemId: string): Promise<any>;
-		ingest(payload: { content: string; metadata?: any; origin?: string }): Promise<any>;
+		ingest(content: string, params?: {
+			profileName?: string | null;
+			extractorName?: string;
+			context?: Record<string, any>;
+		}): Promise<any>;
 		update(itemId: string, payload: any): Promise<any>;
-		search(payload: any): Promise<any[]>;
+		search(query: string, params?: {
+			topK?: number;
+			enableHybrid?: boolean;
+			memoryType?: string | null;
+			expertise?: boolean;
+			cite?: boolean;
+			decompose?: boolean;
+			multiHop?: boolean;
+			maxHops?: number;
+			budgetMs?: number;
+			semanticHops?: boolean;
+			includeReference?: boolean;
+			includeConsolidated?: boolean;
+			consolidationFirst?: boolean;
+		}): Promise<any>;
 		// Match the runtime SDK (smart-memory-sdk-js MemoryAPI.js getNeighbors/
 		// getLineage). Prior `neighbors`/`lineage` declarations were wishful and
 		// caused LineagePanel to silently no-op in production since 0.2.6 —

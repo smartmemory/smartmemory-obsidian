@@ -2,6 +2,57 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## [0.2.13] — 2026-06-06 — Lite/server parity + Codex review fixes (DIST-OBSIDIAN-LITE-PARITY-1)
+
+Full lite-vs-server parity audit plus the backlog of independent-review bugs.
+The trigger: the graph showed "Authentication required" because the plugin was
+in **cloud mode pointed at a dead local server** while only the lite daemon was
+running — not a bug, but it surfaced real parity and correctness gaps.
+
+### Fixed — lite/server parity (DIST-OBSIDIAN-LITE-PARITY-1)
+- **Lite mode now connects without an API key.** `initClient()` always built an
+  `apiKey`-mode client and returned `null` when no key was set, so lite mode (where
+  the daemon reports `auth:false` and the key field is hidden) was unreachable — a
+  fresh lite user got a silent "disconnected" with no field to fix it. Connection
+  gating is now a pure, tested `resolveClientConfig()`: cloud requires a key, lite
+  connects keyless (no `Authorization` header), and cloud-only workspace
+  auto-discovery is skipped in lite. The startup "no API key" blocker is mode-aware.
+- **Decisions panel degrades explicitly in lite mode** instead of 404'ing. Panels
+  now gate on `/health` `capabilities`; `DecisionsPanel` shows "Decisions aren't
+  available in local (lite) mode" when the daemon reports `decisions:false`.
+- **Seamless cloud↔lite switching.** Changing mode in settings re-probes `/health`
+  and refreshes open views (graph + panels) immediately, and a console warning
+  fires when the chosen mode disagrees with what the endpoint actually reports.
+
+### Fixed — Codex review (independent pass)
+- **Extracted entities were silently missed** by autolink and the entity sidebar:
+  both filtered `/neighbors` for `MENTIONS`/`MENTIONED_IN` only, dropping the
+  canonical `CONTAINS_ENTITY` leg extraction actually writes. Centralized into
+  `src/bridge/entity-edges.ts` (`isEntityEdge` + deduped `entityNeighbors`); all
+  three call sites use it.
+- **Recalled-memory notes silently de-linked on reload** — `RecallModal` created
+  the note and set the in-memory mapping but never persisted it or wrote
+  `smartmemory_id`. Now `await saveMappings()` + writes frontmatter.
+- **Unhandled promise rejections** in `AutolinkModal` (apply handlers) and the
+  settings tab's `hide()` flush — both now catch and surface a Notice.
+- **Stale inline suggestions** lingered when the paragraph shrank below the query
+  floor — the engine now clears them.
+- **Status-bar document click listener leaked** past unload — added `dispose()`
+  (cancels the arm timer + removes the listener), wired into `onunload`.
+- **`diagnose` command** no longer rejects on a failed paginated list — wrapped
+  with a controlled failure Notice.
+- Corrected SDK type shims (`sdk-types.d.ts`) and the `lineage-modal` `getLineage`
+  call to match the runtime SDK call shapes.
+
+### Companion daemon change (smart-memory wrapper)
+- The lite daemon now serves `GET /memory/{id}/lineage` and `GET /memory/{id}/links`
+  (previously missing → lineage panel + graph link fallback 404'd in lite), and
+  `/health` advertises `lineage`/`links`/`decisions` capabilities.
+
+### Tests
+- +`client-config` (7), +`entity-edges` (11), +decisions degradation (2),
+  +suggestions clear-on-shrink (1). Suite: **190 passing** (was 169).
+
 ## [0.2.12] — 2026-06-05 — Tier 2 real-Obsidian Electron E2E harness (DIST-OBSIDIAN-E2E-2)
 
 Built out the Tier 2 harness the 0.2.11 scaffold reserved — drives the **real Obsidian

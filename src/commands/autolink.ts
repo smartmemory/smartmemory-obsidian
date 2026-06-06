@@ -4,6 +4,7 @@ import { findEntityMentions, EntityCandidate } from '../bridge/wikilinks';
 import { AutolinkModal } from '../views/autolink-modal';
 import { readSmartMemoryId } from '../bridge/frontmatter';
 import { toWikilinkTarget } from '../util/wikilink-path';
+import { entityNeighbors } from '../bridge/entity-edges';
 
 export function registerAutolinkCommand(plugin: SmartMemoryPlugin): void {
 	plugin.addCommand({
@@ -43,12 +44,7 @@ export function registerAutolinkCommand(plugin: SmartMemoryPlugin): void {
 
 				if (entities.length === 0) {
 					const neighborsResp: any = await (client.memories as any).getNeighbors(itemId);
-					const neighbors: any[] = neighborsResp?.neighbors || [];
-					entities = neighbors
-						.filter(n => {
-							const lt = String(n?.link_type || '').toUpperCase();
-							return lt === 'MENTIONS' || lt === 'MENTIONED_IN';
-						})
+					entities = entityNeighbors(neighborsResp?.neighbors || [])
 						.map(n => ({
 							name: typeof n.content === 'string' ? n.content : String(n.item_id ?? ''),
 							type: n.memory_type,

@@ -4,6 +4,8 @@ import { Plugin, Notice } from 'obsidian';
 declare const __SMARTMEMORY_VERSION__: string;
 import { SmartMemoryClient } from 'smartmemory-sdk-js/core';
 import { createObsidianFetch } from './transport';
+import { resolveClientConfig } from './services/client-config';
+import type { HealthCapabilities } from './services/health';
 import { SmartMemorySettingTab } from './settings';
 import { StatusBarController } from './status-bar';
 import { MappingStore } from './bridge/mapping-store';
@@ -45,6 +47,11 @@ export default class SmartMemoryPlugin extends Plugin {
 	 * affordance copy, hidden API key field, etc.
 	 * Defaults to false (cloud assumption) until /health says otherwise. */
 	isLite = false;
+	/** DIST-OBSIDIAN-LITE-PARITY-1: capability map from the /health probe.
+	 * null until the probe lands (or in cloud mode, where /health may not
+	 * carry a capabilities block). Drives explicit panel degradation —
+	 * see capabilityAvailable(). */
+	capabilities: HealthCapabilities | null = null;
 	/** Increments each time the client is reinitialized; used to discard stale async results. */
 	private clientGeneration = 0;
 	/** Tail of pending saveData() calls; new writes chain off it so we never
@@ -184,7 +191,8 @@ export default class SmartMemoryPlugin extends Plugin {
 		// (auto-ingest on save/create, workspace auto-discovery) are choices,
 		// not diagnostics, and live in the settings panel + status bar.
 		const blockers: string[] = [];
-		if (!hasKey) blockers.push('no API key');
+		// An API key is only a blocker in cloud mode — the lite daemon has no auth.
+		if (!hasKey && cfg.mode !== 'lite') blockers.push('no API key');
 		if (!cfg.apiUrl) blockers.push('no API URL');
 
 		if (blockers.length > 0) {
@@ -210,6 +218,9 @@ export default class SmartMemoryPlugin extends Plugin {
 
 	onunload(): void {
 		this.client = null;
+		// Tear down the status bar's document-level menu listener before
+		// dropping the reference, or it leaks past unload.
+		this.statusBar?.dispose();
 		this.statusBar = null;
 		this.ingestService = null;
 		this.searchService = null;
@@ -222,8 +233,14 @@ export default class SmartMemoryPlugin extends Plugin {
 
 	private initClient(): void {
 		this.clientGeneration += 1;
-		const apiKey = this.resolveApiKey();
-		if (!apiKey || !this.settings.apiUrl) {
+		// Cloud requires an API key; lite connects keyless (the daemon reports
+		// auth:false). See resolveClientConfig — DIST-OBSIDIAN-LITE-PARITY-1.
+		const decision = resolveClientConfig({
+			mode: this.settings.mode,
+			apiUrl: this.settings.apiUrl,
+			apiKey: this.resolveApiKey(),
+		});
+		if (!decision.connect) {
 			this.client = null;
 			this.ingestService = null;
 			this.searchService = null;
@@ -233,18 +250,20 @@ export default class SmartMemoryPlugin extends Plugin {
 		}
 
 		this.client = new SmartMemoryClient({
-			mode: 'apiKey',
-			apiKey,
+			// Keyless in lite mode: omitting mode+apiKey makes the SDK send no
+			// Authorization header (AuthCore only sets it when a token exists).
+			...(decision.auth === 'apiKey' ? { mode: 'apiKey', apiKey: decision.apiKey } : {}),
 			apiBaseUrl: this.settings.apiUrl,
 			fetchFn: createObsidianFetch(),
 		});
 
 		if (this.settings.workspaceId) {
 			this.client.setTeamId(this.settings.workspaceId);
-		} else {
+		} else if (decision.discoverWorkspace) {
 			// Auto-discover from /auth/me — the API key already binds a tenant
 			// and the user has a default workspace. Cache the result back into
-			// settings so we don't re-fetch on every reconnect.
+			// settings so we don't re-fetch on every reconnect. Skipped in lite
+			// mode: the daemon is single-tenant and exposes no /auth/me.
 			void this.discoverWorkspace(this.clientGeneration);
 		}
 
@@ -371,9 +390,58 @@ export default class SmartMemoryPlugin extends Plugin {
 			// cloud (would briefly surface API-key field, billing modal, etc.).
 			if (result.probed) {
 				this.isLite = result.isLite;
+				// Capture the capability map so panels can degrade explicitly
+				// (DIST-OBSIDIAN-LITE-PARITY-1). Refresh open panels if the
+				// availability picture changed, so a panel that opened before
+				// the probe landed swaps its error state for the right message.
+				const changed = JSON.stringify(this.capabilities) !== JSON.stringify(result.capabilities);
+				this.capabilities = result.capabilities;
+				if (changed) this.refreshOpenViews();
+				// Drift diagnostic: the user's chosen mode disagrees with what
+				// the endpoint actually is (e.g. mode=cloud but apiUrl points at
+				// a live lite daemon, or vice-versa). Surface it — this is the
+				// exact confusion behind "graph asks for auth in lite mode".
+				const endpointMode = result.mode === 'remote' ? 'cloud' : result.mode;
+				if (endpointMode && endpointMode !== this.settings.mode) {
+					console.warn(
+						`[smartmemory] mode drift: settings say "${this.settings.mode}" but ${this.settings.apiUrl} reports "${result.mode}". ` +
+						`The plugin will behave per the live endpoint; align the Mode setting to remove this warning.`,
+					);
+				}
 			}
 		} catch {
 			// Health module shouldn't throw, but if it does, preserve last-known.
+		}
+	}
+
+	/**
+	 * Is a /health capability available on the connected backend?
+	 *
+	 * Default-true: unknown capabilities (cloud, or before the probe lands)
+	 * are assumed available so we never hide a working feature. Only an
+	 * explicit `false` from the daemon degrades a panel. DIST-OBSIDIAN-LITE-PARITY-1.
+	 */
+	capabilityAvailable(name: keyof HealthCapabilities): boolean {
+		const caps = this.capabilities as Record<string, boolean> | null;
+		return !caps || caps[name as string] !== false;
+	}
+
+	/** Re-render every open SmartMemory view (right-panels + graph). Used after
+	 *  a connection/mode change so switching cloud↔lite is seamless rather than
+	 *  showing stale state until the next active-leaf-change.
+	 *  DIST-OBSIDIAN-LITE-PARITY-1. */
+	refreshOpenViews(): void {
+		const types = [
+			LINEAGE_PANEL_TYPE,
+			SUPERSESSIONS_PANEL_TYPE,
+			DECISIONS_PANEL_TYPE,
+			GRAPH_VIEW_TYPE,
+		];
+		for (const type of types) {
+			for (const leaf of this.app.workspace.getLeavesOfType(type)) {
+				const view = leaf.view as { refresh?: () => void } | undefined;
+				view?.refresh?.();
+			}
 		}
 	}
 
@@ -400,6 +468,15 @@ export default class SmartMemoryPlugin extends Plugin {
 		this.ingestService?.updateSettings?.(this.settings);
 		this.inlineSuggestions?.updateSettings();
 		this.vaultEvents?.updateSettings();
+		// DIST-OBSIDIAN-LITE-PARITY-1: a settings change may have switched
+		// cloud↔lite (different endpoint, auth, capabilities). Re-probe so
+		// isLite/capabilities track the new backend, and re-render open views
+		// against the fresh client — testConnection() refreshes panels+graph
+		// via refreshOpenViews() once the capability picture is known, and we
+		// refresh immediately too so the new client takes effect without
+		// waiting on the probe round-trip.
+		this.refreshOpenViews();
+		void this.testConnection();
 	}
 
 	async saveMappings(): Promise<void> {
@@ -669,21 +746,29 @@ export default class SmartMemoryPlugin extends Plugin {
 		const byOriginPrefix: Record<string, number> = {};
 		let offset = 0;
 		const pageSize = 200;
-		while (true) {
-			const page: any = await (client as any).memories.list({ limit: pageSize, offset });
-			const items: any[] = Array.isArray(page) ? page : (page?.items || []);
-			total += items.length;
-			for (const item of items) {
-				const origin = String(item.origin || 'unknown');
-				// Group by `prefix:` so `evolver:episodic_to_semantic` and
-				// `evolver:opinion_synthesis` collapse, while `import:obsidian`
-				// stays distinct from `import:other`.
-				const colon = origin.indexOf(':');
-				const prefix = colon > 0 ? origin.slice(0, colon + 1) + (origin.slice(colon + 1).split(/[/_]/)[0] || '') : origin;
-				byOriginPrefix[prefix] = (byOriginPrefix[prefix] || 0) + 1;
+		try {
+			while (true) {
+				const page: any = await (client as any).memories.list({ limit: pageSize, offset });
+				const items: any[] = Array.isArray(page) ? page : (page?.items || []);
+				total += items.length;
+				for (const item of items) {
+					const origin = String(item.origin || 'unknown');
+					// Group by `prefix:` so `evolver:episodic_to_semantic` and
+					// `evolver:opinion_synthesis` collapse, while `import:obsidian`
+					// stays distinct from `import:other`.
+					const colon = origin.indexOf(':');
+					const prefix = colon > 0 ? origin.slice(0, colon + 1) + (origin.slice(colon + 1).split(/[/_]/)[0] || '') : origin;
+					byOriginPrefix[prefix] = (byOriginPrefix[prefix] || 0) + 1;
+				}
+				if (items.length < pageSize) break;
+				offset += items.length;
 			}
-			if (items.length < pageSize) break;
-			offset += items.length;
+		} catch (err) {
+			// Paginated list can fail mid-walk (network/auth/timeout). Surface a
+			// controlled notice instead of rejecting the command callback.
+			console.error('[smartmemory] diagnose-loop failed', err);
+			new Notice(`SmartMemory diagnose failed: ${err instanceof Error ? err.message : String(err)}`, 10000);
+			return;
 		}
 		const active = this.app.workspace.getActiveFile();
 		const mappedId = active ? this.mappingStore.getMemoryId(active.path) : null;

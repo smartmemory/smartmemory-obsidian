@@ -27,7 +27,7 @@ export class LineageModal extends Modal {
 		}
 
 		try {
-			const result: any = await (client.memories as any).lineage(this.itemId);
+			const result: any = await client.memories.getLineage(this.itemId);
 			const chain: any[] = Array.isArray(result?.lineage) ? result.lineage : [];
 			body.empty();
 

@@ -175,6 +175,37 @@ describe('DecisionsPanel — E2E rendering', () => {
 		expect(h.plugin.client.decisions.list).toHaveBeenCalledTimes(1);
 	});
 
+	it('degrades to an explicit message (no fetch) when decisions capability is unavailable (lite mode)', async () => {
+		const h = panelHarness({
+			capabilityAvailable: (name) => name !== 'decisions',
+		});
+		const file = fakeFile('Notes/lite.md');
+		h.setActiveFile(file);
+		h.setMemoryId(file.path, 'mem-lite');
+
+		const { rootEl } = await h.mount(DecisionsPanel);
+
+		// Explicit degradation message, NOT an error or empty-list state.
+		const empty = rootEl.querySelector('.smartmemory-panel-empty');
+		expect(empty?.textContent).toContain('local (lite) mode');
+		expect(rootEl.querySelector('.smartmemory-panel-error')).toBeNull();
+		// Crucially: it must NOT call the unsupported endpoint (no silent 404).
+		expect(h.plugin.client.decisions.list).not.toHaveBeenCalled();
+	});
+
+	it('still fetches decisions when the capability is available (cloud mode)', async () => {
+		const h = panelHarness({
+			capabilityAvailable: () => true,
+			decisions: { list: vi.fn().mockResolvedValue({ decisions: [], count: 0 }) },
+		});
+		const file = fakeFile('Notes/cloud.md');
+		h.setActiveFile(file);
+		h.setMemoryId(file.path, 'mem-cloud');
+
+		await h.mount(DecisionsPanel);
+		expect(h.plugin.client.decisions.list).toHaveBeenCalledTimes(1);
+	});
+
 	it('truncates long decision content to ~120 chars with ellipsis', async () => {
 		const long = 'x'.repeat(300);
 		const h = panelHarness({

@@ -42,6 +42,20 @@ export abstract class SmartMemoryPanelBase extends ItemView {
 	/** Implement the per-panel rendering. The root has been emptied. */
 	protected abstract render(root: HTMLElement, memoryId: string, seq: number): Promise<void>;
 
+	/**
+	 * If non-null, this panel requires the named /health capability. When the
+	 * connected backend reports it unavailable (e.g. the lite daemon does not
+	 * implement decisions), the panel renders `unavailableText()` instead of
+	 * calling render() — explicit degradation, not a silent 404.
+	 * DIST-OBSIDIAN-LITE-PARITY-1. Default null = always render.
+	 */
+	protected requiredCapability(): string | null { return null; }
+
+	/** Message shown when requiredCapability() is unavailable. Override per panel. */
+	protected unavailableText(): string {
+		return 'Not available for the connected backend.';
+	}
+
 	async onOpen(): Promise<void> {
 		this.rootEl = this.containerEl.children[1] as HTMLElement;
 		this.rootEl.empty();
@@ -86,6 +100,12 @@ export abstract class SmartMemoryPanelBase extends ItemView {
 		const client = this.plugin.client;
 		if (!client) {
 			this.renderInfo(root, 'Not connected.');
+			return;
+		}
+
+		const cap = this.requiredCapability();
+		if (cap && !this.plugin.capabilityAvailable(cap as never)) {
+			this.renderInfo(root, this.unavailableText());
 			return;
 		}
 

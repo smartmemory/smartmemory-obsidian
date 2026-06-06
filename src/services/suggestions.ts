@@ -54,7 +54,16 @@ export class SuggestionEngine {
 		if (this.debounceTimer !== null) clearTimeout(this.debounceTimer);
 
 		const trimmed = text.trim();
-		if (trimmed.length < MIN_QUERY_LENGTH) return;
+		if (trimmed.length < MIN_QUERY_LENGTH) {
+			// Input shrank below the query floor (e.g. the user deleted a
+			// paragraph). Drop any in-flight request and clear whatever
+			// suggestions are still rendered — otherwise stale suggestions for
+			// the deleted text linger on screen. The timer is already cleared
+			// above; bump the seq so a returning runQuery discards itself.
+			this.requestSeq++;
+			this.onSuggestions([], trimmed);
+			return;
+		}
 
 		const delay = frequencyToDelayMs(this.settings.suggestionFrequency);
 		this.debounceTimer = setTimeout(() => {

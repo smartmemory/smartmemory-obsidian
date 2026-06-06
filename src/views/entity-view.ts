@@ -2,6 +2,7 @@ import { ItemView, WorkspaceLeaf, TFile, Notice } from 'obsidian';
 import type SmartMemoryPlugin from '../main';
 import { readSmartMemoryId } from '../bridge/frontmatter';
 import { RECALL_EXCLUDE_ORIGIN_PREFIXES } from '../services/search';
+import { entityNeighbors } from '../bridge/entity-edges';
 
 export const ENTITY_VIEW_TYPE = 'smartmemory-entities';
 
@@ -79,12 +80,7 @@ export class EntityView extends ItemView {
 			if (entities.length === 0) {
 				const neighborsResp: any = await (client.memories as any).getNeighbors(itemId);
 				if (seq !== this.refreshSeq) return;
-				const neighbors: any[] = neighborsResp?.neighbors || [];
-				entities = neighbors
-					.filter(n => {
-						const lt = String(n?.link_type || '').toUpperCase();
-						return lt === 'MENTIONS' || lt === 'MENTIONED_IN';
-					})
+				entities = entityNeighbors(neighborsResp?.neighbors || [])
 					.map(n => ({
 						name: typeof n.content === 'string' ? n.content : String(n.item_id ?? ''),
 						type: n.memory_type,
@@ -168,14 +164,10 @@ export class EntityView extends ItemView {
 			if (entity.entityId) {
 				const resp: any = await (client.memories as any).getNeighbors(entity.entityId);
 				const neighbors: any[] = resp?.neighbors || [];
-				const rows = neighbors
-					.filter(n => {
-						const lt = String(n?.link_type || '').toUpperCase();
-						// Only edges that actually mean "X mentions/is-mentioned-in this entity".
-						// Exclude infra edges; entity-to-entity edges (different
-						// entity nodes) get filtered out below by item_id.
-						return lt === 'MENTIONS' || lt === 'MENTIONED_IN';
-					})
+				// entityNeighbors accepts CONTAINS_ENTITY/MENTIONED_IN/MENTIONS and
+				// dedups by item_id; entity-to-entity edges are dropped by the
+				// item_id filter below (note id != entity id).
+				const rows = entityNeighbors(neighbors)
 					.filter(n => n?.item_id && n.item_id !== currentNoteItemId)
 					.map(n => {
 						const filePath = this.plugin.mappingStore.getFilePath(n.item_id);

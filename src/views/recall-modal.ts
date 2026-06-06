@@ -3,6 +3,7 @@ import type SmartMemoryPlugin from '../main';
 import type { SearchResult } from '../services/search';
 import { RECALL_EXCLUDE_ORIGIN_PREFIXES } from '../services/search';
 import { toWikilinkTarget } from '../util/wikilink-path';
+import { writeSmartMemoryFrontmatter } from '../bridge/frontmatter';
 
 export class RecallModal extends Modal {
 	private plugin: SmartMemoryPlugin;
@@ -149,7 +150,15 @@ export class RecallModal extends Modal {
 				await this.app.vault.createFolder(folder);
 			}
 			const file = await this.app.vault.create(path, result.content);
+			// Persist the note↔memory link so it survives a reload. The mapping
+			// store alone is in-memory until saveMappings() flushes it to
+			// data.json; we also stamp the smartmemory_id frontmatter (honoring
+			// the user's writeFrontmatterId setting) so the link is recoverable
+			// even if the mapping cache is ever lost. Without this the created
+			// note silently de-links on the next Obsidian restart.
 			this.plugin.mappingStore.set(file.path, result.itemId);
+			await this.plugin.saveMappings();
+			await writeSmartMemoryFrontmatter(this.app, file, { id: result.itemId }, this.plugin.settings);
 			await this.app.workspace.getLeaf().openFile(file);
 		} catch (err) {
 			new Notice(

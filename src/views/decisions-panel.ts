@@ -36,6 +36,15 @@ export class DecisionsPanel extends SmartMemoryPanelBase {
 	getIcon(): string { return 'list-checks'; }
 	protected rootClass(): string { return 'smartmemory-decisions-panel'; }
 
+	// Decisions are a hosted-service subsystem (transitive provenance walk +
+	// decision store). The local lite daemon reports capabilities.decisions =
+	// false, so degrade explicitly instead of letting client.decisions.list()
+	// 404. DIST-OBSIDIAN-LITE-PARITY-1.
+	protected requiredCapability(): string { return 'decisions'; }
+	protected unavailableText(): string {
+		return 'Decisions aren’t available in local (lite) mode. Switch to Cloud in settings to use them.';
+	}
+
 	protected async render(root: HTMLElement, memoryId: string, seq: number): Promise<void> {
 		root.createDiv({ cls: 'smartmemory-panel-loading', text: 'Loading…' });
 

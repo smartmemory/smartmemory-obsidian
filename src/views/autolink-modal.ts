@@ -41,11 +41,13 @@ export class AutolinkModal extends Modal {
 		const allBtn = actions.createEl('button', { text: 'Accept all' });
 		allBtn.addEventListener('click', () => {
 			this.accepted = new Set(this.proposals.map((_, i) => i));
-			this.applyAndClose();
+			// applyAndClose handles its own errors; void the promise so a
+			// rejection never escapes the click handler unhandled.
+			void this.applyAndClose();
 		});
 
 		const selectedBtn = actions.createEl('button', { text: 'Apply selected', cls: 'mod-cta' });
-		selectedBtn.addEventListener('click', () => this.applyAndClose());
+		selectedBtn.addEventListener('click', () => void this.applyAndClose());
 
 		const cancelBtn = actions.createEl('button', { text: 'Cancel' });
 		cancelBtn.addEventListener('click', () => this.close());
@@ -84,20 +86,27 @@ export class AutolinkModal extends Modal {
 			return;
 		}
 
-		// Verify the note hasn't changed since the modal opened.
-		// Offsets in `accepted` are relative to `originalText`; if the file
-		// was edited externally (auto-ingest re-enriching frontmatter, user
-		// typing, sync, etc.), applying our patch would clobber their edits.
-		const current = await this.app.vault.read(this.file);
-		if (current !== this.originalText) {
-			new Notice('SmartMemory: note changed since auto-link preview. Aborted to prevent data loss.');
-			this.close();
-			return;
-		}
+		try {
+			// Verify the note hasn't changed since the modal opened.
+			// Offsets in `accepted` are relative to `originalText`; if the file
+			// was edited externally (auto-ingest re-enriching frontmatter, user
+			// typing, sync, etc.), applying our patch would clobber their edits.
+			const current = await this.app.vault.read(this.file);
+			if (current !== this.originalText) {
+				new Notice('SmartMemory: note changed since auto-link preview. Aborted to prevent data loss.');
+				this.close();
+				return;
+			}
 
-		const newText = applyLinkInsertions(this.originalText, accepted);
-		await this.app.vault.modify(this.file, newText);
-		new Notice(`SmartMemory: inserted ${accepted.length} wikilink${accepted.length === 1 ? '' : 's'}`);
-		this.close();
+			const newText = applyLinkInsertions(this.originalText, accepted);
+			await this.app.vault.modify(this.file, newText);
+			new Notice(`SmartMemory: inserted ${accepted.length} wikilink${accepted.length === 1 ? '' : 's'}`);
+		} catch (err) {
+			// Vault read/modify can fail (file deleted, permissions, sync lock).
+			// Surface it rather than leaking an unhandled rejection.
+			new Notice(`SmartMemory: auto-link failed — ${err instanceof Error ? err.message : String(err)}`);
+		} finally {
+			this.close();
+		}
 	}
 }

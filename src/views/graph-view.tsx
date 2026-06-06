@@ -117,6 +117,17 @@ export class GraphView extends ItemView {
 		this.reactRoot = null;
 	}
 
+	/**
+	 * Public re-render hook. Called after a connection/mode change so the
+	 * graph re-fetches against the new client instead of showing stale state
+	 * until the next active-leaf-change. DIST-OBSIDIAN-LITE-PARITY-1.
+	 * render() rebuilds the SDK adapter, so GraphExplorer's useGraphData
+	 * effect re-runs and refetches.
+	 */
+	refresh(): void {
+		this.render();
+	}
+
 	private render(): void {
 		if (!this.reactRoot) return;
 

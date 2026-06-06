@@ -52,12 +52,11 @@ export class SearchService {
 	constructor(private client: SmartMemoryClient) {}
 
 	async search(opts: SearchOptions): Promise<SearchResult[]> {
-		// SDK contract: search(query: string, { topK, enableHybrid, memoryType }).
-		// `multi_hop` is not surfaced by the SDK today — DIST-OBSIDIAN-1
-		// follow-up to extend the SDK or POST directly. Regular search
-		// already covers the golden flow.
+		// SDK contract: search(query: string, options). The SDK maps camelCase
+		// options such as `topK` and `multiHop` to the server's snake_case body.
 		const sdkOpts: any = { topK: opts.topK ?? 10 };
 		if (opts.memoryType) sdkOpts.memoryType = opts.memoryType;
+		if (opts.multiHop) sdkOpts.multiHop = true;
 
 		const raw: any = await this.client.memories.search(opts.query, sdkOpts);
 		// /memory/search returns { items: [...] } in newer servers; older

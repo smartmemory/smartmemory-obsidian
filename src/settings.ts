@@ -17,11 +17,20 @@ export class SmartMemorySettingTab extends PluginSettingTab {
 	}
 
 	hide(): void {
-		// Flush any pending text debounce when leaving the settings tab
+		// Flush any pending text debounce when leaving the settings tab.
+		// Track the save in inFlightSave (like debouncedSave/flushPendingSave)
+		// so a concurrent flush can await it, and catch failures so a rejected
+		// save doesn't surface as an unhandled rejection.
 		if (this.saveTimer !== null) {
 			clearTimeout(this.saveTimer);
 			this.saveTimer = null;
-			void this.plugin.saveSettings();
+			this.inFlightSave = this.plugin.saveSettings()
+				.catch((err) => {
+					new Notice(`SmartMemory: failed to save settings — ${err instanceof Error ? err.message : String(err)}`);
+				})
+				.finally(() => {
+					this.inFlightSave = null;
+				});
 		}
 	}
 

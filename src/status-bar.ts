@@ -14,12 +14,42 @@ export class StatusBarController {
 	private memoryLimit: number | null = null;
 	private lastSync: Date | null = null;
 	private actions: StatusBarActions = {};
+	/** Bound so it can be removed in dispose(). */
+	private readonly openHandler: () => void;
+	/** The document-level outside-click dismiss listener, while a menu is open. */
+	private dismissHandler: ((evt: MouseEvent) => void) | null = null;
+	/** Pending setTimeout that arms the dismiss listener, so dispose can cancel it. */
+	private menuTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(el: HTMLElement) {
 		this.el = el;
 		this.el.addClass('smartmemory-status-bar');
-		this.el.addEventListener('click', () => this.openMenu());
+		this.openHandler = () => this.openMenu();
+		this.el.addEventListener('click', this.openHandler);
 		this.render();
+	}
+
+	/**
+	 * Tear down all listeners and any open menu. MUST be called from the
+	 * plugin's onunload — otherwise an open menu leaves a document-level click
+	 * listener (and a detached body element) dangling past unload.
+	 */
+	dispose(): void {
+		this.el.removeEventListener('click', this.openHandler);
+		this.closeMenu();
+	}
+
+	/** Remove the popup menu, its document listener, and any pending arm timer. */
+	private closeMenu(): void {
+		if (this.menuTimer !== null) {
+			clearTimeout(this.menuTimer);
+			this.menuTimer = null;
+		}
+		document.querySelector('.smartmemory-status-menu')?.remove();
+		if (this.dismissHandler) {
+			document.removeEventListener('click', this.dismissHandler, true);
+			this.dismissHandler = null;
+		}
 	}
 
 	setActions(actions: StatusBarActions): void {
@@ -48,7 +78,9 @@ export class StatusBarController {
 		// host plugin can wire actions in via setActions().
 		const existing = document.querySelector('.smartmemory-status-menu');
 		if (existing) {
-			existing.remove();
+			// Toggle off — and remove the dismiss listener/timer too, not just
+			// the element, so a re-open doesn't accumulate dangling listeners.
+			this.closeMenu();
 			return;
 		}
 
@@ -80,11 +112,14 @@ export class StatusBarController {
 		const dismiss = (evt: MouseEvent) => {
 			const target = evt.target as Node;
 			if (!menu.contains(target) && !this.el.contains(target)) {
-				menu.remove();
-				document.removeEventListener('click', dismiss, true);
+				this.closeMenu();
 			}
 		};
-		setTimeout(() => document.addEventListener('click', dismiss, true), 0);
+		this.dismissHandler = dismiss;
+		this.menuTimer = setTimeout(() => {
+			this.menuTimer = null;
+			document.addEventListener('click', dismiss, true);
+		}, 0);
 	}
 
 	private render(): void {

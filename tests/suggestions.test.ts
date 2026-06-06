@@ -38,6 +38,22 @@ describe('SuggestionEngine', () => {
 		expect(search.search).not.toHaveBeenCalled();
 	});
 
+	it('clears already-rendered suggestions when input shrinks below the floor', async () => {
+		// Render suggestions for a long-enough paragraph.
+		engine.queryDebounced('this is a long enough paragraph to query');
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(search.search).toHaveBeenCalledTimes(1);
+		expect(received[received.length - 1].length).toBeGreaterThan(0);
+
+		// User deletes down to a few chars — stale suggestions must clear.
+		received.length = 0;
+		engine.queryDebounced('hi');
+		await vi.advanceTimersByTimeAsync(5000);
+		// No new search fired, but an explicit empty emission cleared the panel.
+		expect(search.search).toHaveBeenCalledTimes(1);
+		expect(received).toContainEqual([]);
+	});
+
 	it('debounces queries by configured frequency', async () => {
 		engine.queryDebounced('this is a test paragraph for searching');
 		await vi.advanceTimersByTimeAsync(1000);

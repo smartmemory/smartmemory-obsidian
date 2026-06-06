@@ -41,6 +41,9 @@ export interface FakePluginOverrides {
 	memories?: Partial<FakeClient['memories']>;
 	getMemoryId?: (path: string) => string | null;
 	settings?: Record<string, unknown>;
+	/** DIST-OBSIDIAN-LITE-PARITY-1: drive capability-gated panel degradation.
+	 *  Defaults to "everything available" so non-gated tests are unaffected. */
+	capabilityAvailable?: (name: string) => boolean;
 }
 
 type LeafChangeHandler = () => void;
@@ -92,6 +95,8 @@ export function panelHarness(opts: FakePluginOverrides = {}): PanelHarness {
 	const plugin: any = {
 		client,
 		settings: { apiUrl: 'http://localhost:9001', ...opts.settings },
+		// Default-true mirrors the real plugin (unknown caps assumed available).
+		capabilityAvailable: opts.capabilityAvailable ?? (() => true),
 		mappingStore: {
 			getMemoryId: (path: string) => {
 				if (opts.getMemoryId) return opts.getMemoryId(path);

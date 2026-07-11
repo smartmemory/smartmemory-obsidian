@@ -1,0 +1,16 @@
+{
+  "type": "decision",
+  "title": "Choose PostgreSQL",
+  "description": null,
+  "resource": "smartmemory://team-a/dec-2",
+  "tags": ["architecture"],
+  "timestamp": null,
+  "smartmemory": {
+    "lifecycle": {"status": "superseded"},
+    "edges": [{"type": "SUPERSEDES", "target": "smartmemory://team-a/dec-1", "properties": {"reason": "Reconsidered after scaling review."}}],
+    "decision": {"decision_type": "choice", "source_type": "explicit"}
+  },
+  "body": "Use PostgreSQL for the primary datastore.\n\n## Relations\n\n- [SUPERSEDES](smartmemory://team-a/dec-1)\n",
+  "preserved_unknown": {},
+  "okf_version": null
+}

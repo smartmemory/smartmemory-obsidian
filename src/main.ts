@@ -9,6 +9,7 @@ import type { HealthCapabilities } from './services/health';
 import { SmartMemorySettingTab } from './settings';
 import { StatusBarController } from './status-bar';
 import { MappingStore } from './bridge/mapping-store';
+import { migrateLegacyFrontmatter, readSmartMemoryId } from './bridge/frontmatter';
 import { IngestService } from './services/ingest';
 import { SearchService } from './services/search';
 import { ContradictionService } from './services/contradiction';
@@ -100,8 +101,7 @@ export default class SmartMemoryPlugin extends Plugin {
 		// and trigger the "create new note" branch on Open. Cheap to run —
 		// metadataCache is already warm by onLayoutReady.
 		this.app.workspace.onLayoutReady(() => {
-			void this.backfillMappingsFromVault();
-			void this.migrateFrontmatterToggle();
+			void this.initializeOkfFrontmatter();
 		});
 
 		this.registerView(SEARCH_VIEW_TYPE, (leaf) => new SearchView(leaf, this));
@@ -284,7 +284,8 @@ export default class SmartMemoryPlugin extends Plugin {
 			if (teamId && !this.settings.workspaceId) {
 				this.client?.setTeamId(teamId);
 				this.settings.workspaceId = teamId;
-				this.debouncedSave();
+				void this.saveSettings();
+				void this.migrateLegacyVaultFrontmatter().then(() => this.backfillMappingsFromVault());
 			}
 		} catch {
 			// Discovery is best-effort; manual entry is still available.
@@ -447,8 +448,32 @@ export default class SmartMemoryPlugin extends Plugin {
 
 	async loadSettings(): Promise<void> {
 		const data = (await this.loadData()) as PluginData | null;
-		this.settings = { ...DEFAULT_SETTINGS, ...(data?.settings || {}) };
+		const savedSettings = (data?.settings || {}) as SmartMemorySettings & Record<string, unknown>;
+		this.settings = { ...DEFAULT_SETTINGS, ...savedSettings };
 		this.mappingStore = new MappingStore(data?.mappings || EMPTY_MAPPINGS);
+
+		// This migration must finish before VaultEvents are registered. Otherwise
+		// the merged OKF defaults can write resource/type during startup even when
+		// a legacy install explicitly persisted writeFrontmatterId=false.
+		if (!this.settings.migratedOkfSettings) {
+			if (!Object.prototype.hasOwnProperty.call(savedSettings, 'okfConformance')) {
+				this.settings.okfConformance = savedSettings.writeFrontmatterId !== false;
+			}
+			if (!Object.prototype.hasOwnProperty.call(savedSettings, 'writeSmartMemoryExtension')) {
+				this.settings.writeSmartMemoryExtension =
+					savedSettings.writeFrontmatterEnrichment === true ||
+					savedSettings.enrichEntities === true ||
+					savedSettings.enrichRelations === true ||
+					savedSettings.enrichMemoryType === true ||
+					savedSettings.enrichSyncTimestamp === true;
+			}
+			this.settings.migratedOkfSettings = true;
+			await this.serializedSave();
+			console.log(
+				`[smartmemory] migrated OKF settings: okfConformance=${this.settings.okfConformance}, ` +
+				`writeSmartMemoryExtension=${this.settings.writeSmartMemoryExtension}`,
+			);
+		}
 
 		// Pre-onboarding migration: until a user completes onboarding, honor the
 		// current defaults for seamless ingest rather than whatever was persisted
@@ -485,7 +510,7 @@ export default class SmartMemoryPlugin extends Plugin {
 
 	/**
 	 * Walk every markdown file's cached frontmatter and re-seed the mapping
-	 * store from any `smartmemory_id` we find. Idempotent; only writes when
+	 * store from native OKF resources (with warned legacy fallback). Idempotent; only writes when
 	 * the in-memory mapping is missing or stale relative to frontmatter.
 	 * Persists once at the end if any change was made.
 	 */
@@ -493,9 +518,8 @@ export default class SmartMemoryPlugin extends Plugin {
 		const files = this.app.vault.getMarkdownFiles();
 		let changed = 0;
 		for (const file of files) {
-			const cache = this.app.metadataCache.getFileCache(file);
-			const id = cache?.frontmatter?.smartmemory_id;
-			if (typeof id !== 'string' || !id) continue;
+			const id = readSmartMemoryId(this.app, file, this.settings.workspaceId);
+			if (!id) continue;
 			const known = this.mappingStore.getMemoryId(file.path);
 			if (known === id) continue;
 			this.mappingStore.set(file.path, id);
@@ -507,55 +531,25 @@ export default class SmartMemoryPlugin extends Plugin {
 		}
 	}
 
-	/**
-	 * One-time migration from the four `enrich*` flags to the single
-	 * `writeFrontmatterEnrichment` master toggle (DIST-OBSIDIAN-PANELS-1).
-	 *
-	 * Decision rule:
-	 *   1. If a prior `enrich*` flag was true in saved data, that's user
-	 *      intent — turn the master ON.
-	 *   2. Otherwise, scan vault frontmatter: if any note has
-	 *      `smartmemory_entities`, the user has accumulated data that may
-	 *      drive Dataview / Bases dashboards — turn ON to preserve them.
-	 *   3. Otherwise (fresh install or clean opt-out) — leave OFF.
-	 *
-	 * The old `enrich*` keys persist in `data.json` after migration since
-	 * we never write them back. They sit dormant; deleting them is not
-	 * worth the extra branch.
-	 */
-	private async migrateFrontmatterToggle(): Promise<void> {
-		if (this.settings.migratedFrontmatterToggle) return;
-
-		// Cast: the old keys are removed from the type but may still be in
-		// data.json from prior versions. Read defensively.
-		const prior: Record<string, unknown> = this.settings as unknown as Record<string, unknown>;
-		const priorOptIn =
-			prior.enrichEntities === true ||
-			prior.enrichRelations === true ||
-			prior.enrichMemoryType === true ||
-			prior.enrichSyncTimestamp === true;
-
-		let master = priorOptIn;
-		if (!master) {
-			master = this.vaultHasEnrichmentFrontmatter();
-		}
-
-		this.settings.writeFrontmatterEnrichment = master;
-		this.settings.migratedFrontmatterToggle = true;
-		await this.saveSettings();
-		console.log(
-			`[smartmemory] migrated frontmatter toggle: writeFrontmatterEnrichment=${master} ` +
-			`(priorOptIn=${priorOptIn})`,
-		);
+	private async initializeOkfFrontmatter(): Promise<void> {
+		await this.migrateLegacyVaultFrontmatter();
+		await this.backfillMappingsFromVault();
 	}
 
-	/** True if any markdown file in the vault has `smartmemory_entities` in frontmatter. */
-	private vaultHasEnrichmentFrontmatter(): boolean {
+	private async migrateLegacyVaultFrontmatter(): Promise<void> {
 		for (const file of this.app.vault.getMarkdownFiles()) {
 			const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-			if (fm && fm.smartmemory_entities !== undefined) return true;
+			if (!fm || ![
+				'smartmemory_id',
+				'smartmemory_type',
+				'smartmemory_entities',
+				'smartmemory_relations',
+				'smartmemory_last_sync',
+			].some(key => Object.prototype.hasOwnProperty.call(fm, key))) continue;
+			await this.app.fileManager.processFrontMatter(file, (fm) => {
+				migrateLegacyFrontmatter(fm, this.settings.workspaceId);
+			});
 		}
-		return false;
 	}
 
 	/** All persistence goes through this serialized chain so concurrent calls

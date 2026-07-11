@@ -44,7 +44,7 @@ describe('regression: ingest 5xx must not duplicate-ingest (Codex MUST-FIX #1)',
 		events = [];
 		service = new IngestService({
 			client, app: createApp(), mappingStore: store,
-			settings: DEFAULT_SETTINGS, pollDelayMs: 0, pollMaxAttempts: 1,
+			settings: { ...DEFAULT_SETTINGS, workspaceId: 'team-a' }, pollDelayMs: 0, pollMaxAttempts: 1,
 			onEvent: (e) => events.push(e),
 		});
 	});
@@ -106,7 +106,7 @@ describe('regression: empty-array enrichment completes (Codex MUST-FIX #2)', () 
 			client,
 			app: createApp(),
 			mappingStore: new MappingStore({ ...EMPTY_MAPPINGS }),
-			settings: DEFAULT_SETTINGS,
+			settings: { ...DEFAULT_SETTINGS, workspaceId: 'team-a' },
 			pollDelayMs: 0,
 			pollMaxAttempts: 3,
 			onEvent: (e) => events.push(e),
@@ -124,29 +124,28 @@ describe('regression: empty-array enrichment completes (Codex MUST-FIX #2)', () 
 	});
 });
 
-describe('regression: stripFrontmatter (auto-ingest feedback loop fix)', () => {
-	it('produces same hash regardless of frontmatter timestamp churn', async () => {
-		const { stripFrontmatter } = await import('../src/bridge/frontmatter');
+describe('regression: parsed OKF body hashing (auto-ingest feedback loop fix)', () => {
+	it('produces same hash regardless of OKF metadata churn', async () => {
+		const { parseOkf } = await import('../src/bridge/okf');
 		const { hashContent } = await import('../src/services/ingest');
 
-		const before = '---\nsmartmemory_id: abc\nsmartmemory_last_sync: 2026-04-30T00:00:00Z\n---\nThe rain in Spain.';
-		const after = '---\nsmartmemory_id: abc\nsmartmemory_last_sync: 2026-04-30T00:00:30Z\n---\nThe rain in Spain.';
-		expect(hashContent(stripFrontmatter(before))).toBe(hashContent(stripFrontmatter(after)));
+		const before = '---\ntype: semantic\nresource: smartmemory://team-a/abc\ntimestamp: "2026-04-30T00:00:00Z"\n---\nThe rain in Spain.';
+		const after = '---\ntype: semantic\nresource: smartmemory://team-a/def\ntimestamp: "2026-04-30T00:00:30Z"\n---\nThe rain in Spain.';
+		expect(hashContent(parseOkf(before).body)).toBe(hashContent(parseOkf(after).body));
 	});
 
 	it('produces different hash when body changes', async () => {
-		const { stripFrontmatter } = await import('../src/bridge/frontmatter');
+		const { parseOkf } = await import('../src/bridge/okf');
 		const { hashContent } = await import('../src/services/ingest');
 
-		const v1 = '---\nsmartmemory_id: abc\n---\nVersion one.';
-		const v2 = '---\nsmartmemory_id: abc\n---\nVersion two.';
-		expect(hashContent(stripFrontmatter(v1))).not.toBe(hashContent(stripFrontmatter(v2)));
+		const v1 = '---\ntype: semantic\n---\nVersion one.';
+		const v2 = '---\ntype: semantic\n---\nVersion two.';
+		expect(hashContent(parseOkf(v1).body)).not.toBe(hashContent(parseOkf(v2).body));
 	});
 
-	it('handles notes without frontmatter unchanged', async () => {
-		const { stripFrontmatter } = await import('../src/bridge/frontmatter');
-		expect(stripFrontmatter('hello world')).toBe('hello world');
-		expect(stripFrontmatter('---\nbut not closed')).toBe('---\nbut not closed');
+	it('rejects malformed fenced input rather than silently treating it as body', async () => {
+		const { parseOkf, OkfParseError } = await import('../src/bridge/okf');
+		expect(() => parseOkf('---\nbut not closed')).toThrow(OkfParseError);
 	});
 });
 

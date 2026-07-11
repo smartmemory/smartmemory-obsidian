@@ -16,18 +16,15 @@ export interface SmartMemorySettings {
 	includeFolders: string[];
 	excludeFolders: string[];
 
-	// Frontmatter
-	// `writeFrontmatterId` is load-bearing — it links the note to the
-	// SmartMemory item for recall, contradiction detection, every right-
-	// panel view, and re-seeding the mapping store on vault import.
-	// `writeFrontmatterEnrichment` controls the four display fields
-	// (entities, relations, memory type, sync timestamp). Default OFF for
-	// fresh installs; the `migratedFrontmatterToggle` migration on first
-	// load flips it ON for vaults that already have `smartmemory_entities`
-	// written so existing Dataview/Bases dashboards keep working.
-	writeFrontmatterId: boolean;
-	writeFrontmatterEnrichment: boolean;
-	migratedFrontmatterToggle: boolean;
+	// OKF frontmatter. Native conformance writes type/resource; the optional
+	// extension adds SmartMemory-specific annotations and typed edges.
+	okfConformance: boolean;
+	writeSmartMemoryExtension: boolean;
+	migratedOkfSettings: boolean;
+	/** Deprecated persisted keys read only during settings migration. */
+	writeFrontmatterId?: boolean;
+	writeFrontmatterEnrichment?: boolean;
+	migratedFrontmatterToggle?: boolean;
 
 	// Suggestions
 	inlineSuggestionsEnabled: boolean;
@@ -62,9 +59,9 @@ export const DEFAULT_SETTINGS: SmartMemorySettings = {
 	includeFolders: ['**/*'],
 	excludeFolders: ['templates/', '.obsidian/'],
 
-	writeFrontmatterId: true,
-	writeFrontmatterEnrichment: false,
-	migratedFrontmatterToggle: false,
+	okfConformance: true,
+	writeSmartMemoryExtension: false,
+	migratedOkfSettings: false,
 
 	inlineSuggestionsEnabled: false,
 	suggestionConfidenceThreshold: 0.7,

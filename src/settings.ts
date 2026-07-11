@@ -207,15 +207,15 @@ export class SmartMemorySettingTab extends PluginSettingTab {
 
 		this.addToggle(
 			containerEl,
-			'Write smartmemory_id',
-			'Adds the SmartMemory item ID to frontmatter. Required for note ↔ memory linking, contradiction detection, and the right-panel context views to find the right SmartMemory record. Turn off only if you accept losing those features.',
-			'writeFrontmatterId',
+			'Keep notes OKF-conformant',
+			'Writes native OKF type and resource fields. Resource links each note version to its SmartMemory item and is required for contextual panels and mapping recovery.',
+			'okfConformance',
 		);
 		this.addToggle(
 			containerEl,
-			'Write enrichment to frontmatter',
-			'Adds extracted entities, relations, memory type, and sync timestamp to each note\'s YAML. Useful if you want to query your vault with Dataview or Bases. Off by default for new installs; on automatically for vaults that already have SmartMemory enrichment data so existing dashboards keep working.',
-			'writeFrontmatterEnrichment',
+			'Write SmartMemory OKF extension',
+			'Adds optional extracted entities and typed graph edges under one nested smartmemory block. Existing unknown extension keys are preserved.',
+			'writeSmartMemoryExtension',
 		);
 
 		// Suggestions

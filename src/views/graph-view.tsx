@@ -140,7 +140,9 @@ export class GraphView extends ItemView {
 			return;
 		}
 
-		const adapter = createSDKAdapter(client);
+		// @smartmemory/graph carries its own SDK declaration copy; runtime
+		// clients are compatible even though the duplicate nominal types drift.
+		const adapter = createSDKAdapter(client as any);
 		const focusId = this.resolveFocusId();
 
 		this.reactRoot.render(
@@ -179,7 +181,7 @@ export class GraphView extends ItemView {
 		if (!file) return null;
 		return (
 			this.plugin.mappingStore.getMemoryId(file.path)
-			?? readSmartMemoryId(this.plugin.app, file)
+			?? readSmartMemoryId(this.plugin.app, file, this.plugin.settings.workspaceId)
 		);
 	}
 

@@ -1,0 +1,12 @@
+{
+  "type": "semantic",
+  "title": null,
+  "description": null,
+  "resource": "smartmemory://team-a/custom-1",
+  "tags": null,
+  "timestamp": null,
+  "smartmemory": {"preserved": {"internal_note": "retain separately"}},
+  "body": "Unknown producer keys remain top-level.\n",
+  "preserved_unknown": {"custom_field": "foo", "producer_priority": 7},
+  "okf_version": null
+}

@@ -61,7 +61,7 @@ export class ContradictionBanner {
 		const file = view.file;
 		const itemId =
 			this.plugin.mappingStore.getMemoryId(file.path) ??
-			readSmartMemoryId(this.plugin.app, file);
+			readSmartMemoryId(this.plugin.app, file, this.plugin.settings.workspaceId);
 
 		if (!itemId) {
 			this.clearBannerOnLeaf(view.leaf);

@@ -3,7 +3,7 @@ import type SmartMemoryPlugin from '../main';
 import { findEntityMentions, EntityCandidate } from '../bridge/wikilinks';
 import { AutolinkModal } from '../views/autolink-modal';
 import { readSmartMemoryId } from '../bridge/frontmatter';
-import { toWikilinkTarget } from '../util/wikilink-path';
+import { toMarkdownLinkTarget } from '../util/wikilink-path';
 import { entityNeighbors } from '../bridge/entity-edges';
 
 export function registerAutolinkCommand(plugin: SmartMemoryPlugin): void {
@@ -24,7 +24,7 @@ export function registerAutolinkCommand(plugin: SmartMemoryPlugin): void {
 
 			const itemId =
 				plugin.mappingStore.getMemoryId(file.path) ??
-				readSmartMemoryId(plugin.app, file);
+				readSmartMemoryId(plugin.app, file, plugin.settings.workspaceId);
 			if (!itemId) {
 				new Notice('SmartMemory: this note has not been ingested yet');
 				return;
@@ -86,7 +86,7 @@ export function registerAutolinkCommand(plugin: SmartMemoryPlugin): void {
 				if (!target) continue;
 				// Don't propose linking to the same note we're editing
 				if (target === file.path) continue;
-				candidates.push({ name: entity.name, target: toWikilinkTarget(target) });
+				candidates.push({ name: entity.name, target: toMarkdownLinkTarget(target, file.path) });
 			}
 
 			if (candidates.length === 0) {

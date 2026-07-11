@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { findEntityMentions, applyLinkInsertions, LinkProposal } from '../src/bridge/wikilinks';
+import {
+	findEntityMentions,
+	applyLinkInsertions,
+	typedEdgesFromLinkProposals,
+	LinkProposal,
+} from '../src/bridge/wikilinks';
+import { toMarkdownLinkTarget } from '../src/util/wikilink-path';
 
 describe('findEntityMentions', () => {
 	it('finds whole-word matches in prose', () => {
@@ -134,7 +140,7 @@ describe('findEntityMentions', () => {
 });
 
 describe('applyLinkInsertions', () => {
-	it('wraps the matched text in [[wikilinks]]', () => {
+	it('wraps the matched text in a standard markdown link', () => {
 		const text = 'Isaac Asimov wrote books.';
 		const proposals: LinkProposal[] = [
 			{
@@ -146,7 +152,7 @@ describe('applyLinkInsertions', () => {
 			},
 		];
 		const result = applyLinkInsertions(text, proposals);
-		expect(result).toBe('[[people/asimov|Isaac Asimov]] wrote books.');
+		expect(result).toBe('[Isaac Asimov](people/asimov) wrote books.');
 	});
 
 	it('preserves casing of the matched text via display alias', () => {
@@ -161,7 +167,7 @@ describe('applyLinkInsertions', () => {
 			},
 		];
 		const result = applyLinkInsertions(text, proposals);
-		expect(result).toBe('[[asimov|asimov]] wrote books.');
+		expect(result).toBe('[asimov](asimov) wrote books.');
 	});
 
 	it('applies multiple insertions correctly (back-to-front)', () => {
@@ -171,10 +177,37 @@ describe('applyLinkInsertions', () => {
 			{ entityName: 'B', matchedText: 'B', target: 'b', start: 14, end: 15 },
 		];
 		const result = applyLinkInsertions(text, proposals);
-		expect(result).toBe('[[a|A]] wrote about [[b|B]].');
+		expect(result).toBe('[A](a) wrote about [B](b).');
 	});
 
 	it('returns unchanged text when no proposals are accepted', () => {
 		expect(applyLinkInsertions('abc', [])).toBe('abc');
+	});
+
+	it('percent-encodes markdown link targets', () => {
+		const proposal: LinkProposal = {
+			entityName: 'New York', matchedText: 'New York', target: 'places/New York', start: 0, end: 8,
+		};
+		expect(applyLinkInsertions('New York', [proposal])).toBe('[New York](places/New%20York)');
+	});
+
+	it('mirrors accepted links as typed OKF edges', () => {
+		const proposal: LinkProposal = {
+			entityName: 'Asimov', matchedText: 'Asimov', target: 'people/asimov', start: 0, end: 6,
+		};
+		expect(typedEdgesFromLinkProposals([proposal])).toEqual([
+			{ type: 'LINKS_TO', target: 'people/asimov' },
+		]);
+	});
+});
+
+describe('toMarkdownLinkTarget', () => {
+	it('resolves a vault file relative to a nested source note', () => {
+		expect(toMarkdownLinkTarget('people/Isaac Asimov.md', 'projects/books/notes.md'))
+			.toBe('../../people/Isaac Asimov.md');
+	});
+
+	it('preserves valid filename characters for later percent-encoding', () => {
+		expect(toMarkdownLinkTarget('notes/C# ^draft.md', 'notes/source.md')).toBe('C# ^draft.md');
 	});
 });

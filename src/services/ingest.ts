@@ -2,7 +2,8 @@ import type { App, TFile } from 'obsidian';
 import type { SmartMemoryClient } from 'smartmemory-sdk-js/core';
 import type { MappingStore } from '../bridge/mapping-store';
 import type { SmartMemorySettings } from '../types';
-import { writeSmartMemoryFrontmatter, readSmartMemoryId, stripFrontmatter } from '../bridge/frontmatter';
+import { writeSmartMemoryFrontmatter, readSmartMemoryId } from '../bridge/frontmatter';
+import { parseOkf, type OkfDocument } from '../bridge/okf';
 
 export type IngestEvent =
 	| { type: 'ingest-start'; path: string }
@@ -113,18 +114,29 @@ export class IngestService {
 
 		try {
 			const raw = await this.app.vault.read(file);
-			// Strip our own frontmatter before hashing or sending. This
-			// breaks the auto-ingest feedback loop (writeback → modify →
-			// ingest → writeback) and prevents our metadata fields from
-			// being seen by the entity extractor.
-			const content = stripFrontmatter(raw);
+			// Parse OKF rather than discarding frontmatter wholesale. The body is
+			// still the ingest text, while native fields, extension data, and
+			// preserved producer keys travel in structured context.
+			let okf: OkfDocument | null = null;
+			if (raw.startsWith('---')) {
+				try {
+					okf = parseOkf(raw);
+				} catch (err) {
+					console.warn(
+						'[smartmemory] Note frontmatter is not valid OKF; ingesting as an unconverted note',
+						file.path,
+						err,
+					);
+				}
+			}
+			const content = okf?.body ?? stripLeadingFrontmatter(raw);
 			if (!content.trim()) {
 				this.emit({ type: 'ingest-error', path: file.path, error: 'empty content' });
 				return { itemId: '' };
 			}
 			const newHash = hashContent(content);
 			const oldHash = this.store.getContentHash(file.path);
-			const existingId = this.store.getMemoryId(file.path) ?? readSmartMemoryId(this.app, file);
+			const existingId = this.store.getMemoryId(file.path) ?? readSmartMemoryId(this.app, file, this.settings.workspaceId);
 
 			let itemId: string;
 			if (options.metadataOnly && existingId) {
@@ -160,7 +172,7 @@ export class IngestService {
 				if (remoteMissing) {
 					this.store.handleDelete(file.path);
 					const result = await this.client.memories.ingest(content, {
-						context: { origin: 'import:obsidian', source_path: file.path },
+						context: ingestContext(file.path, okf),
 					});
 					itemId = result.item_id;
 				} else {
@@ -197,10 +209,7 @@ export class IngestService {
 					}
 					this.store.handleDelete(file.path);
 				}
-				const context: Record<string, any> = {
-					origin: 'import:obsidian',
-					source_path: file.path,
-				};
+				const context = ingestContext(file.path, okf);
 				const result = await this.client.memories.ingest(content, { context });
 				itemId = result.item_id;
 			}
@@ -256,7 +265,7 @@ export class IngestService {
 	 * is stale and we skip the write.
 	 */
 	async enrichFile(file: TFile): Promise<void> {
-		const itemId = this.store.getMemoryId(file.path) ?? readSmartMemoryId(this.app, file);
+		const itemId = this.store.getMemoryId(file.path) ?? readSmartMemoryId(this.app, file, this.settings.workspaceId);
 		if (!itemId) {
 			console.warn('[smartmemory] enrichFile skipped — no itemId for', file.path);
 			return;
@@ -431,6 +440,31 @@ export class IngestService {
 	private emit(event: IngestEvent): void {
 		this.onEvent?.(event);
 	}
+}
+
+function ingestContext(path: string, okf: OkfDocument | null): Record<string, any> {
+	const context: Record<string, any> = { origin: 'import:obsidian', source_path: path };
+	if (okf) {
+		context.okf = {
+			type: okf.type,
+			title: okf.title,
+			description: okf.description,
+			resource: okf.resource,
+			tags: okf.tags,
+			timestamp: okf.timestamp,
+			smartmemory: okf.smartmemory,
+			preserved_unknown: okf.preserved_unknown,
+			okf_version: okf.okf_version,
+		};
+	}
+	return context;
+}
+
+/** Match the pre-OKF adapter: YAML metadata is excluded from body ingestion. */
+function stripLeadingFrontmatter(raw: string): string {
+	if (!raw.startsWith('---')) return raw;
+	const match = raw.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
+	return match ? raw.slice(match[0].length) : raw;
 }
 
 function sleep(ms: number): Promise<void> {

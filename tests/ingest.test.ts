@@ -76,11 +76,7 @@ describe('IngestService.ingestFile', () => {
 			client,
 			app,
 			mappingStore: store,
-			// Enrichment-write tests below assert on smartmemory_entities /
-			// smartmemory_type — toggle the master flag on so the write path
-			// fires. Default OFF (clean install) is exercised by the empty-
-			// frontmatter tests in frontmatter.test.ts.
-			settings: { ...DEFAULT_SETTINGS, writeFrontmatterEnrichment: true },
+			settings: { ...DEFAULT_SETTINGS, workspaceId: 'team-a', writeSmartMemoryExtension: true },
 			pollDelayMs: 0,           // disable real timers in tests
 			pollMaxAttempts: 3,
 			onEvent: (e) => events.push(e),
@@ -104,7 +100,56 @@ describe('IngestService.ingestFile', () => {
 			);
 			expect(result.itemId).toBe('item-new');
 			expect(store.getMemoryId('notes/asimov.md')).toBe('item-new');
-			expect(app._frontmatters['notes/asimov.md'].smartmemory_id).toBe('item-new');
+			expect(app._frontmatters['notes/asimov.md'].resource).toBe('smartmemory://team-a/item-new');
+		});
+
+		it('parses OKF and sends its body plus structured metadata context', async () => {
+			const file = {
+				path: 'notes/okf.md',
+				_content: '---\ntype: decision\ntags: [architecture]\ncustom: keep\nsmartmemory:\n  confidence: 0.8\n---\n\nChoose PostgreSQL.\n',
+			};
+			app._frontmatters['notes/okf.md'] = {
+				type: 'decision', tags: ['architecture'], custom: 'keep', smartmemory: { confidence: 0.8 },
+			};
+			await service.ingestFile(file as any, { skipEnrichment: true });
+
+			expect(client.memories.ingest).toHaveBeenCalledWith('Choose PostgreSQL.\n', {
+				context: expect.objectContaining({
+					origin: 'import:obsidian',
+					source_path: 'notes/okf.md',
+					okf: expect.objectContaining({
+						type: 'decision',
+						tags: ['architecture'],
+						smartmemory: { confidence: 0.8 },
+						preserved_unknown: { custom: 'keep' },
+					}),
+				}),
+			});
+			expect(app._frontmatters['notes/okf.md']).toMatchObject({
+				resource: 'smartmemory://team-a/item-new',
+				type: 'decision',
+				custom: 'keep',
+				smartmemory: { confidence: 0.8 },
+			});
+		});
+
+		it('warns and ingests an ordinary Obsidian frontmatter note as plain body content', async () => {
+			const file = {
+				path: 'ordinary.md',
+				_content: '---\naliases: [Foo]\ncssclasses: [wide]\n---\nBody text',
+			};
+			const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+			await expect(service.ingestFile(file as any, { skipEnrichment: true })).resolves.toEqual({ itemId: 'item-new' });
+			expect(client.memories.ingest).toHaveBeenCalledWith('Body text', {
+				context: { origin: 'import:obsidian', source_path: 'ordinary.md' },
+			});
+			expect(warning).toHaveBeenCalledWith(
+				'[smartmemory] Note frontmatter is not valid OKF; ingesting as an unconverted note',
+				'ordinary.md',
+				expect.any(Error),
+			);
+			warning.mockRestore();
 		});
 
 		it('writes content hash so re-ingest can detect changes', async () => {
@@ -146,8 +191,8 @@ describe('IngestService.ingestFile', () => {
 			await service.ingestFile(file as any, { skipEnrichment: true });
 			await service.enrichFile(file as any);
 
-			expect(app._frontmatters['a.md'].smartmemory_entities).toEqual(['Asimov']);
-			expect(app._frontmatters['a.md'].smartmemory_type).toBe('semantic');
+			expect(app._frontmatters['a.md'].smartmemory.entities).toEqual(['Asimov']);
+			expect(app._frontmatters['a.md'].type).toBe('semantic');
 		});
 
 		it('retries when neighbors are not yet ready', async () => {
@@ -171,7 +216,7 @@ describe('IngestService.ingestFile', () => {
 
 			await service.enrichFile(file as any);
 			expect(callCount).toBe(2);
-			expect(app._frontmatters['a.md'].smartmemory_entities).toEqual(['X']);
+			expect(app._frontmatters['a.md'].smartmemory.entities).toEqual(['X']);
 		});
 
 		it('gives up after pollMaxAttempts and emits timeout event', async () => {
@@ -214,7 +259,7 @@ describe('IngestService.ingestFolder', () => {
 			client,
 			app,
 			mappingStore: store,
-			settings: DEFAULT_SETTINGS,
+			settings: { ...DEFAULT_SETTINGS, workspaceId: 'team-a' },
 			pollDelayMs: 0,
 			pollMaxAttempts: 1,
 			concurrency: 2,

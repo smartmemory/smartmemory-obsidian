@@ -48,7 +48,7 @@ export class EntityView extends ItemView {
 
 		const itemId =
 			this.plugin.mappingStore.getMemoryId(target.path) ??
-			readSmartMemoryId(this.plugin.app, target);
+			readSmartMemoryId(this.plugin.app, target, this.plugin.settings.workspaceId);
 
 		if (!itemId) {
 			root.createDiv({

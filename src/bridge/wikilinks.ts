@@ -24,6 +24,11 @@ export interface LinkProposal {
 	end: number;
 }
 
+export interface OkfTypedEdge {
+	type: 'LINKS_TO';
+	target: string;
+}
+
 /**
  * Compute regions of `text` that must NOT receive link insertions.
  * Returns sorted, non-overlapping [start, end) ranges.
@@ -162,8 +167,14 @@ export function applyLinkInsertions(text: string, proposals: LinkProposal[]): st
 	const sorted = [...proposals].sort((a, b) => b.start - a.start);
 	let result = text;
 	for (const p of sorted) {
-		const linkText = `[[${p.target}|${p.matchedText}]]`;
+		const target = p.target.split('/').map(encodeURIComponent).join('/');
+		const linkText = `[${p.matchedText}](${target})`;
 		result = result.slice(0, p.start) + linkText + result.slice(p.end);
 	}
 	return result;
+}
+
+/** Typed mirror for generic OKF markdown links. */
+export function typedEdgesFromLinkProposals(proposals: LinkProposal[]): OkfTypedEdge[] {
+	return proposals.map(proposal => ({ type: 'LINKS_TO', target: proposal.target }));
 }

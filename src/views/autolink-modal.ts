@@ -1,6 +1,6 @@
 import { App, Modal, TFile, Notice } from 'obsidian';
 import type { LinkProposal } from '../bridge/wikilinks';
-import { applyLinkInsertions } from '../bridge/wikilinks';
+import { applyLinkInsertions, typedEdgesFromLinkProposals } from '../bridge/wikilinks';
 
 export class AutolinkModal extends Modal {
 	private file: TFile;
@@ -23,7 +23,7 @@ export class AutolinkModal extends Modal {
 		contentEl.addClass('smartmemory-autolink-modal');
 
 		contentEl.createEl('h2', {
-			text: `Auto-link: ${this.proposals.length} proposed wikilink${this.proposals.length === 1 ? '' : 's'}`,
+			text: `Auto-link: ${this.proposals.length} proposed link${this.proposals.length === 1 ? '' : 's'}`,
 		});
 
 		if (this.proposals.length === 0) {
@@ -75,7 +75,7 @@ export class AutolinkModal extends Modal {
 		preview.createSpan({ cls: 'smartmemory-autolink-context', text: '…' + before });
 		preview.createSpan({ cls: 'smartmemory-autolink-match', text: p.matchedText });
 		preview.createSpan({ cls: 'smartmemory-autolink-arrow', text: ' → ' });
-		preview.createSpan({ cls: 'smartmemory-autolink-target', text: `[[${p.target}]]` });
+		preview.createSpan({ cls: 'smartmemory-autolink-target', text: `[${p.matchedText}](${p.target})` });
 		preview.createSpan({ cls: 'smartmemory-autolink-context', text: after + '…' });
 	}
 
@@ -100,7 +100,35 @@ export class AutolinkModal extends Modal {
 
 			const newText = applyLinkInsertions(this.originalText, accepted);
 			await this.app.vault.modify(this.file, newText);
-			new Notice(`SmartMemory: inserted ${accepted.length} wikilink${accepted.length === 1 ? '' : 's'}`);
+			const newEdges = typedEdgesFromLinkProposals(accepted);
+			try {
+				await this.app.fileManager.processFrontMatter(this.file, (fm) => {
+					if (fm.smartmemory === undefined) fm.smartmemory = {};
+					if (typeof fm.smartmemory !== 'object' || fm.smartmemory === null || Array.isArray(fm.smartmemory)) {
+						console.warn('[smartmemory] Rejecting invalid OKF smartmemory extension: expected a mapping', fm.smartmemory);
+						throw new Error('OKF smartmemory extension must be a mapping');
+					}
+					if (fm.smartmemory.edges !== undefined && !Array.isArray(fm.smartmemory.edges)) {
+						console.warn('[smartmemory] Rejecting invalid OKF smartmemory.edges: expected an array', fm.smartmemory.edges);
+						throw new Error('OKF smartmemory.edges must be an array');
+					}
+					const existing = fm.smartmemory.edges ?? [];
+					const seen = new Set(existing.map((edge: any) => `${edge?.type}\u0000${edge?.target}`));
+					fm.smartmemory.edges = [...existing];
+					for (const edge of newEdges) {
+						const key = `${edge.type}\u0000${edge.target}`;
+						if (!seen.has(key)) fm.smartmemory.edges.push(edge);
+						seen.add(key);
+					}
+				});
+			} catch (err) {
+				console.warn(
+					'[smartmemory] Auto-link edge writeback failed after inserting links; typed edges may be missing',
+					err,
+				);
+				throw err;
+			}
+			new Notice(`SmartMemory: inserted ${accepted.length} link${accepted.length === 1 ? '' : 's'}`);
 		} catch (err) {
 			// Vault read/modify can fail (file deleted, permissions, sync lock).
 			// Surface it rather than leaking an unhandled rejection.

@@ -1,0 +1,12 @@
+{
+  "type": "semantic",
+  "title": null,
+  "description": null,
+  "resource": "smartmemory://team-a/legacy-1",
+  "tags": null,
+  "timestamp": null,
+  "smartmemory": {"edges": [{"type": "LINKS_TO", "target": "smartmemory://team-a/target-1"}], "preserved": {"legacy_entities": ["Alice"]}},
+  "body": "Legacy frontmatter migrates on read.\n",
+  "preserved_unknown": {},
+  "okf_version": null
+}

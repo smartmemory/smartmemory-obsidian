@@ -28,6 +28,7 @@ import { InlineSuggestions } from './enrichers/suggestions';
 import { VaultEvents } from './services/vault-events';
 import { OnboardingModal, showFirstIngestTour } from './views/onboarding-modal';
 import { DEFAULT_SETTINGS, EMPTY_MAPPINGS, SmartMemorySettings, PluginData } from './types';
+import { UPGRADE_URL } from './util/quota-errors';
 
 export default class SmartMemoryPlugin extends Plugin {
 	settings: SmartMemorySettings = DEFAULT_SETTINGS;
@@ -68,7 +69,7 @@ export default class SmartMemoryPlugin extends Plugin {
 			onIngest: () => this.runCommand('smartmemory-ingest-current-note'),
 			onSearch: () => this.runCommand('smartmemory-open-search'),
 			onSettings: () => (this.app as any).setting?.open?.(),
-			onUpgrade: () => window.open('https://www.smartmemory.ai/billing', '_blank'),
+			onUpgrade: () => window.open(UPGRADE_URL, '_blank'),
 		});
 
 		this.addSettingTab(new SmartMemorySettingTab(this.app, this));

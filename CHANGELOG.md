@@ -4,7 +4,7 @@ All notable changes to the SmartMemory Obsidian plugin are documented here. Form
 
 ## Unreleased
 
-- Point user-facing links at https://www.smartmemory.ai (the web app has no app.smartmemory.ai DNS yet); filed as PLAT-APP-SUBDOMAIN-1.
+- Point user-facing links at https://www.smartmemory.ai (the web app had no app.smartmemory.ai DNS until 2026-10-08, and it now only redirects to www). Filed as PLAT-APP-SUBDOMAIN-1.
 
 ## [0.2.13] — 2026-06-06 — Lite/server parity + Codex review fixes (DIST-OBSIDIAN-LITE-PARITY-1)
 

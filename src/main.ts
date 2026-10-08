@@ -68,7 +68,7 @@ export default class SmartMemoryPlugin extends Plugin {
 			onIngest: () => this.runCommand('smartmemory-ingest-current-note'),
 			onSearch: () => this.runCommand('smartmemory-open-search'),
 			onSettings: () => (this.app as any).setting?.open?.(),
-			onUpgrade: () => window.open('https://app.smartmemory.ai/billing', '_blank'),
+			onUpgrade: () => window.open('https://www.smartmemory.ai/billing', '_blank'),
 		});
 
 		this.addSettingTab(new SmartMemorySettingTab(this.app, this));

@@ -2,7 +2,7 @@ import { App, Modal, Notice } from 'obsidian';
 import type SmartMemoryPlugin from '../main';
 import { LITE_DAEMON_URL } from '../types';
 
-const SIGNUP_URL = 'https://app.smartmemory.ai/signup';
+const SIGNUP_URL = 'https://www.smartmemory.ai/signup';
 const LITE_INSTALL_URL = 'https://docs.smartmemory.ai/smartmemory/lite-daemon';
 
 export class OnboardingModal extends Modal {

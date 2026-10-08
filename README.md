@@ -34,7 +34,7 @@ Direct install from Obsidian's Community plugin directory (submission pending).
 
 ## Setup
 
-1. Create a SmartMemory account at [app.smartmemory.ai](https://app.smartmemory.ai) and copy your API key from Settings → API Keys.
+1. Create a SmartMemory account at [www.smartmemory.ai](https://www.smartmemory.ai) and copy your API key from Settings → API Keys.
 2. In Obsidian: Settings → SmartMemory → paste API key, set workspace ID, save.
 3. Status-bar dot turns green once connected.
 

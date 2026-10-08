@@ -2,6 +2,10 @@
 
 All notable changes to the SmartMemory Obsidian plugin are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/).
 
+## Unreleased
+
+- Point user-facing links at https://www.smartmemory.ai (the web app has no app.smartmemory.ai DNS yet); filed as PLAT-APP-SUBDOMAIN-1.
+
 ## [0.2.13] — 2026-06-06 — Lite/server parity + Codex review fixes (DIST-OBSIDIAN-LITE-PARITY-1)
 
 Full lite-vs-server parity audit plus the backlog of independent-review bugs.

@@ -1,7 +1,7 @@
 import { Notice, Modal, App } from 'obsidian';
 
-export const UPGRADE_URL = 'https://app.smartmemory.ai/billing';
-export const SYNC_TO_CLOUD_URL = 'https://app.smartmemory.ai/signup?ref=obsidian-lite';
+export const UPGRADE_URL = 'https://www.smartmemory.ai/billing';
+export const SYNC_TO_CLOUD_URL = 'https://www.smartmemory.ai/signup?ref=obsidian-lite';
 
 /**
  * Examine an error from a SmartMemory API call and surface the right user
